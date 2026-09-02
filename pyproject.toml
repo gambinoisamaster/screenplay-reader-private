@@ -1,0 +1,26 @@
+[project]
+name = "screenplay-reader"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fish-audio-sdk>=1.3.0",
+    "pdfplumber>=0.11.10",
+    "pydub>=0.25.1",
+    "pyside6>=6.11.1",
+]
+
+# Pocket-TTS needs torch>=2.5, which has no wheels for Intel Macs.
+# On Apple Silicon / Linux / Windows: uv sync --extra pocket
+[project.optional-dependencies]
+pocket = [
+    "pocket-tts>=2.1.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+]
+
+# Always the CPU build of torch — never the multi-GB CUDA wheels.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -1,0 +1,7 @@
+# Secrets — never commit your API key
+config.py
+
+.venv/
+__pycache__/
+*.pyc
+cache/
