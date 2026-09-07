@@ -1,8 +1,10 @@
-# Secrets — never commit your API key
-config.py
-
 .venv/
 __pycache__/
 *.pyc
 cache/
 .DS_Store
+_to_delete/
+
+# Voice samples are personal recordings; keep them out of the public repo.
+# Drop your own .wav files in assets/voices/ locally.
+assets/voices/*.wav

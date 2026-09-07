@@ -3,22 +3,39 @@ name = "screenplay-reader"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "fish-audio-sdk>=1.3.0",
     "pdfplumber>=0.11.10",
     "pydub>=0.25.1",
     "pyside6>=6.11.1",
+    "num2words>=0.5",  # "Room 2" == "room two" when comparing transcripts
+    "pocket-tts>=2.1.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    # Listed explicitly even though pocket-tts already pulls it in: [tool.uv.sources]
+    # below only applies to DIRECT dependencies, so without this line the CPU index
+    # is ignored and Linux resolves the multi-GB CUDA build.
+    "torch>=2.5; sys_platform != 'darwin' or platform_machine == 'arm64'",
 ]
 
-# Pocket-TTS needs torch>=2.5, which has no wheels for Intel Macs.
-# On Apple Silicon / Linux / Windows: uv sync --extra pocket
+# Optional Whisper check of every generated line (see screenplay_reader/validate.py).
+# Both backends run offline. Install with: uv sync --extra validate
 [project.optional-dependencies]
-pocket = [
-    "pocket-tts>=2.1.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+validate = [
+    "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "faster-whisper>=1.2; sys_platform != 'darwin' or platform_machine != 'arm64'",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8", "reportlab>=4"]  # reportlab builds the test PDF
+
+# Pocket-TTS is the only TTS engine, so it is a required dependency. It needs
+# torch>=2.5, which has no wheels for Intel Macs — the markers above skip both
+# there, and the app reports the engine as unavailable rather than crashing.
 
 # Always the CPU build of torch — never the multi-GB CUDA wheels.
+# Only Linux/Windows need the override: on macOS the default PyPI wheel is
+# already the CPU build, and download.pytorch.org does not ship macOS wheels.
 [tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

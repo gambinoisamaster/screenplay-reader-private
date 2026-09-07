@@ -1,6 +1,7 @@
-"""End-to-end smoke test with a fake TTS engine — no API calls, no credits.
+"""End-to-end smoke test with a fake TTS engine — no model download needed.
 
 Usage: uv run python scripts/smoke_test.py <screenplay.pdf> [n_elements]
+For the unit tests, run: uv run pytest
 """
 
 import sys
@@ -40,7 +41,8 @@ def main():
     def voice_for(el):
         return (engine, el.character or "NARRATOR")
 
-    audio, cues = build_audio(elements, voice_for, beat_seconds=1.5)
+    result = build_audio(elements, voice_for, beat_seconds=1.5)
+    audio, cues = result.audio, result.cues
 
     # Timeline sanity: cues ordered, non-overlapping, within the audio.
     assert cues, "no cues produced"

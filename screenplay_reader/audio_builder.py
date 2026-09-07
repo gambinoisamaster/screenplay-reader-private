@@ -1,7 +1,25 @@
 """Turn parsed screenplay elements into one stitched audio track.
 
 Produces the full mix plus a timeline mapping audio time -> element index,
-which drives live highlighting during playback.
+which drives live highlighting during playback and click-to-seek.
+
+What gets spoken (see speech.py for the exact wording):
+- scene headings, with INT./EXT. expanded to Interior/Exterior
+- action lines
+- character cues as "Ethan." in the narrator's voice — unless the user turned
+  on "Skip characters' names", in which case the voice change alone marks
+  the speaker. Names inside action lines are always read either way.
+- dialogue, verbatim; delivery parentheticals like "(sarcastically)" never
+- "(beat)" / "(pause)" as a pause
+
+Every piece of text is whitespace-collapsed before it reaches an engine, so
+a dialogue block wrapped over three lines in the PDF is one utterance with
+no pauses at the line breaks.
+
+Optional validation: when a Transcriber is supplied, each spoken segment is
+transcribed and compared to its text; a mismatch is regenerated up to
+MAX_ATTEMPTS times and the best take is kept. Segments that never passed are
+reported as Issues so the user can decide whether to regenerate.
 
 Beat pauses: a "(beat)" / "(pause)" parenthetical becomes a stretch of
 near-silence. If any audio files exist in assets/fillers/, one is chosen at
@@ -19,10 +37,13 @@ from typing import Callable
 
 from pydub import AudioSegment
 
+from . import speech
 from .parser import BEAT_RE, Element
+from .validate import Issue, Transcriber, MAX_ATTEMPTS
 
 FRAME_RATE = 44100
 GAP_MS = 300  # breathing room between elements
+CUE_GAP_MS = 150  # shorter: the name should lead straight into the line
 FILLER_GAIN_DB = -18  # fillers should be felt, not heard
 FILLERS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fillers"
 
@@ -40,6 +61,13 @@ class Cue:
     start_ms: int
     end_ms: int
     element_index: int
+
+
+@dataclass
+class BuildResult:
+    audio: AudioSegment
+    cues: list[Cue]
+    issues: list[Issue]  # empty unless validation ran and something never passed
 
 
 def _normalize(seg: AudioSegment) -> AudioSegment:
@@ -86,20 +114,45 @@ def _dialogue_chunks(text: str) -> list[str | None]:
     return chunks
 
 
+def _synthesize_checked(
+    engine, voice: str, text: str, checker: Transcriber | None, element_index: int
+) -> tuple[AudioSegment, Issue | None]:
+    """Generate one segment; with a checker, retry until the transcript matches."""
+    assert "\n" not in text and "  " not in text, "text must be whitespace-collapsed"
+    best_seg, best_rate, best_transcript = None, float("inf"), ""
+    attempts = MAX_ATTEMPTS if checker else 1
+    for _ in range(attempts):
+        seg = engine.synthesize(voice, text)
+        if checker is None:
+            return seg, None
+        verdict = checker.check(seg, text)
+        if verdict.ok:
+            return seg, None
+        if verdict.error_rate < best_rate:
+            best_seg, best_rate, best_transcript = seg, verdict.error_rate, verdict.transcript
+    return best_seg, Issue(element_index, text, best_transcript, best_rate)
+
+
 def build_audio(
     elements: list[Element],
     voice_for: Callable[[Element], tuple[object, str] | None],
     beat_seconds: float = 2.0,
+    *,
+    speak_character_names: bool = True,
+    checker: Transcriber | None = None,
     progress: Callable[[int, int, str], None] = lambda done, total, msg: None,
     cancelled: Callable[[], bool] = lambda: False,
-) -> tuple[AudioSegment, list[Cue]]:
+) -> BuildResult:
     """voice_for(element) returns (engine, voice) for anything to vocalize,
-    or None to skip. Character cues and delivery parentheticals never reach
-    it; beat parentheticals become pauses attributed to their element."""
+    or None to skip. It is asked about scene, action, dialogue and — when
+    speak_character_names is on — character elements (answer with the
+    narrator). Delivery parentheticals never reach it; beat parentheticals
+    become pauses attributed to their element."""
     beat_ms = int(beat_seconds * 1000)
     fillers = _load_fillers()
+    names = {e.character for e in elements if e.character}
 
-    # (element_index, kind, payload): kind is 'speech' (payload=(engine, voice, text))
+    # (element_index, kind, payload): kind is 'speech' (payload=(engine, voice, text, gap_ms))
     # or 'pause'
     plan: list[tuple[int, str, tuple | None]] = []
     for i, el in enumerate(elements):
@@ -107,7 +160,7 @@ def build_audio(
             if el.is_beat:
                 plan.append((i, "pause", None))
             continue  # delivery direction — never vocalized
-        if el.kind == "character":
+        if el.kind == "character" and not speak_character_names:
             continue  # the voice change itself announces the speaker
         ev = voice_for(el)
         if ev is None:
@@ -118,12 +171,14 @@ def build_audio(
                 if chunk is None:
                     plan.append((i, "pause", None))
                 else:
-                    plan.append((i, "speech", (engine, voice, chunk)))
+                    plan.append((i, "speech", (engine, voice, speech.dialogue(chunk), GAP_MS)))
         else:
-            plan.append((i, "speech", (engine, voice, el.text)))
+            gap = CUE_GAP_MS if el.kind == "character" else GAP_MS
+            plan.append((i, "speech", (engine, voice, speech.for_element(el, names), gap)))
 
     raw = bytearray()
     cues: list[Cue] = []
+    issues: list[Issue] = []
 
     def append(seg: AudioSegment, element_index: int | None) -> None:
         seg = _normalize(seg)
@@ -143,14 +198,17 @@ def build_audio(
         if kind == "pause":
             append(_beat_segment(beat_ms, fillers), idx)
         else:
-            engine, voice, text = payload
+            engine, voice, text, gap = payload
             progress(done, total, f"{engine.name} · {voice}: {text[:40]}…")
-            append(engine.synthesize(voice, text), idx)
-            append(_silence(GAP_MS), None)
+            seg, issue = _synthesize_checked(engine, voice, text, checker, idx)
+            if issue:
+                issues.append(issue)
+            append(seg, idx)
+            append(_silence(gap), None)
     progress(total, total, "Stitching complete")
 
     audio = AudioSegment(bytes(raw), frame_rate=FRAME_RATE, sample_width=2, channels=1)
-    return audio, cues
+    return BuildResult(audio, cues, issues)
 
 
 def export_mp3(audio: AudioSegment, path: str) -> None:

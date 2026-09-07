@@ -53,6 +53,18 @@ def _collapse_doubled(text: str) -> str:
     return " ".join(collapse_word(w) for w in text.split())
 
 
+def _join_wrapped(prev: str, text: str) -> str:
+    """Rejoin a line wrapped mid-word: 're-' + 'twisting' -> 're-twisting'.
+
+    A line ending in a hyphen followed by a lowercase continuation is a word
+    broken at the margin; a hyphen before a capital ('Bel-' / 'Air') or a
+    dash used as punctuation ('hanging on--') keeps its space.
+    """
+    if prev.endswith("-") and not prev.endswith("--") and text[:1].islower():
+        return prev + text
+    return prev + " " + text
+
+
 def _clean_cue(text: str) -> str:
     """'ELIZABETH (CONT'D)' -> 'ELIZABETH'."""
     return CUE_PAREN_RE.sub("", text).strip()
@@ -121,7 +133,7 @@ def parse_screenplay(pdf_path: str) -> Screenplay:
                 and not new_para
             )
             if merge:
-                prev.text += " " + text
+                prev.text = _join_wrapped(prev.text, text)
                 prev.lines.append(text)
             else:
                 elements.append(Element("dialogue", text, character=current_char, lines=[text]))
@@ -133,7 +145,7 @@ def parse_screenplay(pdf_path: str) -> Screenplay:
             current_char = None
             prev = elements[-1] if elements else None
             if kind == "action" and prev and prev.kind == "action" and not new_para:
-                prev.text += " " + text
+                prev.text = _join_wrapped(prev.text, text)
                 prev.lines.append(text)
             else:
                 elements.append(Element(kind, text, lines=[text]))
