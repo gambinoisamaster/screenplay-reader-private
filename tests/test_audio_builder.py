@@ -51,6 +51,15 @@ def test_wrapped_dialogue_is_exactly_one_synth_call():
     assert not any(t.startswith("exactly") or t == "bold." for t in texts), "line was split at a wrap"
 
 
+def test_action_paragraph_is_one_natural_utterance():
+    engine = RecordingEngine()
+    elements = [Element("action", "First sentence. Second sentence! Third sentence?", lines=["x"])]
+    build_audio(elements, lambda el: (engine, "v"))
+    assert [text for _, text in engine.calls] == [
+        "First sentence. Second sentence! Third sentence?"
+    ]
+
+
 def test_no_typographic_punctuation_reaches_an_engine():
     engine = RecordingEngine()
     els = [Element("dialogue", "Can\u2019t. \u201cReally?\u201d Yes\u2026", character="COACH", lines=["x"])]

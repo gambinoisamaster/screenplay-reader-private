@@ -90,13 +90,24 @@ def parse_screenplay(pdf_path: str) -> Screenplay:
                 prev_bottom = line["bottom"]
                 raw_lines.append((line["x0"], text, new_para))
 
-    # The two most frequent indents in any screenplay are action (left)
-    # and dialogue (right of it). Everything else is judged relative to them.
+    # Character cues are usually the rightmost all-caps lines. Use them to
+    # keep a frequent dialogue indent from being mistaken for the action indent
+    # when a short scene contains many more dialogue lines than action lines.
     hist = Counter(round(x) for x, _, _ in raw_lines)
-    top_two = sorted(x for x, _ in hist.most_common(2))
-    if len(top_two) < 2:
+    cue_xs = [
+        round(x) for x, text, _ in raw_lines
+        if not SCENE_RE.match(text) and _looks_like_cue(text)
+    ]
+    cue_x = max(cue_xs) if cue_xs else None
+    if cue_x is not None:
+        body_xs = [x for x in hist if x < cue_x]
+        dialogue_x = max(body_xs, key=lambda x: hist[x], default=None)
+        action_x = min(body_xs, default=None)
+    else:
+        top_two = sorted(x for x, _ in hist.most_common(2))
+        action_x, dialogue_x = (top_two + [None, None])[:2]
+    if action_x is None or dialogue_x is None or action_x == dialogue_x:
         return Screenplay([], [])
-    action_x, dialogue_x = top_two
 
     elements: list[Element] = []
     characters: list[str] = []

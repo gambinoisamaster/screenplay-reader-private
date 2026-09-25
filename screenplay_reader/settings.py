@@ -21,7 +21,7 @@ LAST_AUDIO_PATH = CACHE_DIR / "last_run.wav"
 
 @dataclass
 class Settings:
-    # Narrator announces "Ethan." before each of Ethan's lines unless this is on.
+    # Narrator announces "CHARACTER NAME." before each of CHARACTER NAME's lines unless disabled in settings.
     skip_character_names: bool = False
     # One voice (the Narrator's) reads everything; per-character casting is hidden.
     single_voice: bool = False
@@ -29,6 +29,7 @@ class Settings:
     validate_audio: bool = False
     beat_seconds: float = 2.0
     highlight: bool = True
+    theme: str = "light"
 
     @classmethod
     def load(cls) -> "Settings":

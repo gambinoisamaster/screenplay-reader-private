@@ -3,12 +3,12 @@
 Produces the full mix plus a timeline mapping audio time -> element index,
 which drives live highlighting during playback and click-to-seek.
 
-What gets spoken (see speech.py for the exact wording):
-- scene headings, with INT./EXT. expanded to Interior/Exterior
-- action lines
-- character cues as "Ethan." in the narrator's voice — unless the user turned
-  on "Skip characters' names", in which case the voice change alone marks
-  the speaker. Names inside action lines are always read either way.
+Script Elements which are audio-generated (elements as defined by Final Draft) (see speech.py for the exact wording):
+- Scene Headings, with INT./EXT. expanded to Interior/Exterior
+- Action Lines
+- Character names (only when signaling a line of dialogue). The default settings use the narrator's voice but under settings, skipping character names is possible before audio-generation.  
+- If this option is turned on, the audio will simply say the line of dialogue.
+- Character names inside action lines are always read either way.
 - dialogue, verbatim; delivery parentheticals like "(sarcastically)" never
 - "(beat)" / "(pause)" as a pause
 

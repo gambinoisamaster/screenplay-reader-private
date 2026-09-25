@@ -82,3 +82,31 @@ def test_speakers_and_parentheticals(pdf):
     # Ethan's "Me?" and "I dunno..." are separated by a parenthetical -> two elements
     ethan = [e.text for e in sp.elements if e.kind == "dialogue" and e.character == "ETHAN"]
     assert len(ethan) == 2
+
+
+def test_speakers_survive_when_dialogue_is_more_common_than_action(tmp_path):
+    path = tmp_path / "short_scene.pdf"
+    c = canvas.Canvas(str(path), pagesize=letter)
+    c.setFont("Courier", 12)
+    rows = [
+        (108, "INT. JAIL - COMMISSARY - LATER"),
+        (108, "Kyle sits at a table."),
+        (252, "KYLE"),
+        (180, "I’m not talking without my lawyer."),
+        (180, "You heard me."),
+        (252, "ETHAN"),
+        (180, "Relax. I’m not a cop."),
+        (180, "I just want to talk."),
+        (108, "A guard approaches."),
+        (252, "CORRECTIONAL OFFICER"),
+        (180, "Break it up."),
+    ]
+    y = 720
+    for x, text in rows:
+        c.drawString(x, y, text)
+        y -= LINE
+    c.save()
+
+    sp = parse_screenplay(str(path))
+
+    assert sp.characters == ["KYLE", "ETHAN", "CORRECTIONAL OFFICER"]

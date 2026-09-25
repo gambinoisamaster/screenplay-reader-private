@@ -21,13 +21,17 @@ validate = [
     "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "faster-whisper>=1.2; sys_platform != 'darwin' or platform_machine != 'arm64'",
 ]
+mlx_tts = [
+    "mlx-audio>=0.5.3; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 
 [dependency-groups]
 dev = ["pytest>=8", "reportlab>=4"]  # reportlab builds the test PDF
 
-# Pocket-TTS is the only TTS engine, so it is a required dependency. It needs
-# torch>=2.5, which has no wheels for Intel Macs — the markers above skip both
-# there, and the app reports the engine as unavailable rather than crashing.
+# Pocket-TTS is the default TTS engine, so it is a required dependency. It
+# needs torch>=2.5, which has no wheels for Intel Macs — the markers above
+# skip both there, and the app reports the engine as unavailable rather than
+# crashing. OmniVoice is an optional Apple Silicon extra.
 
 # Always the CPU build of torch — never the multi-GB CUDA wheels.
 # Only Linux/Windows need the override: on macOS the default PyPI wheel is

@@ -26,10 +26,9 @@ Open source, for **non-commercial use** (see Credits & licenses below).
 - **One voice or a full cast** — turn on **One voice reads the whole script**
   and the Narrator's voice (your cloned sample or any built-in voice) reads
   everything, dialogue included; per-character casting disappears.
-- **Character names, your call** — by default the narrator says *"Ethan."*
-  before each of Ethan's lines. Turn on **Skip characters' names during
-  playback** in Settings and only the dialogue is spoken; the voice change
-  marks the speaker. Names inside action lines are always read either way.
+- **Character names, your call** — by default the narrator says Characters' name
+  before each line of dialogue. In settings, you may toggle on **Skip characters' names during playback** and only the dialogue is spoken; the voice change
+  marks the speaker. Character names that appear in action lines are always read either way.
 - **Screenplay-aware** — `(CONT'D)`, `(V.O.)`, `(O.S.)` and delivery
   directions like `(sarcastically)` are never vocalized. `(beat)` and
   `(pause)` become an adjustable 1–5 s pause, optionally colored with subtle
@@ -52,6 +51,7 @@ Open source, for **non-commercial use** (see Credits & licenses below).
 | Engine | Runs | Notes |
 | --- | --- | --- |
 | **Pocket-TTS** | locally, on CPU | ~20 voices. Needs `torch>=2.5` (CPU build is fine — see gotchas) |
+| **OmniVoice** | locally, on Apple Silicon | Zero-shot voice cloning from `.wav` samples. Install with `uv sync --extra mlx_tts` |
 
 ## Setup
 
@@ -61,6 +61,7 @@ Requires [uv](https://docs.astral.sh/uv/) and [ffmpeg](https://ffmpeg.org)
 ```bash
 uv sync                    # app + Pocket-TTS
 uv sync --extra validate   # additionally the Whisper line check (optional)
+uv sync --extra mlx_tts    # additionally OmniVoice on Apple Silicon (optional)
 ```
 
 Pocket-TTS installs automatically except on Intel Macs (see below), where no
@@ -91,6 +92,10 @@ Everything the app remembers lives in `cache/` (`settings.json`,
 Put a clean, mono `.wav` of 10–20 seconds in `assets/voices/`. Pocket-TTS
 reproduces the speaker *and* the recording quality, so use a quiet room and
 no music. The file name (minus `.wav`) becomes the voice's label.
+
+For better OmniVoice cloning, optionally place the exact transcript beside it
+as `VoiceName.wav.txt`. For example, `assets/voices/Susan.wav.txt` should
+contain the words spoken in `Susan.wav`. Pocket-TTS ignores this sidecar file.
 
 ## PyTorch CPU gotchas
 
@@ -134,6 +139,8 @@ The bundle lands in `dist/`.
 
 - **[Pocket-TTS](https://github.com/kyutai-labs/pocket-tts)** by Kyutai Labs —
   MIT license. Lightweight CPU text-to-speech and voice cloning.
+- **[MLX-Audio](https://github.com/Blaizzy/mlx-audio)** — local Apple Silicon
+  inference for OmniVoice.
 - **[mlx-whisper](https://github.com/ml-explore/mlx-examples)** (MIT) /
   **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)** (MIT) —
   optional local transcription for the line check, running OpenAI's Whisper
