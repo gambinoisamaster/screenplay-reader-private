@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import bisect
+from collections import Counter
 from pathlib import Path
 
 from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QRectF, Qt, QThread, QTimer, QUrl, Signal
@@ -25,6 +26,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QCompleter,
     QDialog,
     QDialogButtonBox,
     QDockWidget,
@@ -47,7 +49,7 @@ from PySide6.QtWidgets import (
 from ..audio_builder import Cue, GenerationCancelled, build_audio, export_mp3
 from ..engines import load_engines
 from ..parser import Screenplay, parse_screenplay
-from ..settings import LAST_AUDIO_PATH, Session, Settings
+from ..settings import LAST_AUDIO_PATH, Session, Settings, load_voice_memory, save_voice_memory
 from ..validate import Transcriber
 
 POSITION_SAVE_INTERVAL_MS = 3000
@@ -293,6 +295,7 @@ class MainWindow(QMainWindow):
 
         self.engines = load_engines()
         self.settings = Settings.load()
+        self.voice_memory = load_voice_memory()  # character -> voice, remembered across scripts
         self.transcriber = Transcriber()
         self.screenplay: Screenplay | None = None
         self.pdf_path: str = ""
@@ -780,6 +783,7 @@ class MainWindow(QMainWindow):
         accepted = dialog.exec() == QDialog.DialogCode.Accepted
         if accepted:
             self._pending_casting = self._casting_labels(self.dialog_voice_combos)
+            self._remember_voices(self._pending_casting)
             self._rebuild_casting()
         self.casting_dialog = None
         self.dialog_cast_form_host = None
@@ -908,30 +912,58 @@ class MainWindow(QMainWindow):
     # ---------- voice options ----------
 
     def _voice_options(self) -> list[tuple[str, tuple]]:
-        opts = []
-        for engine in self.engines:
-            if engine.available()[0]:
-                for v in engine.voices():
-                    opts.append((f"{engine.name}: {v}", (engine, v)))
-        return opts
+        # Label is just the voice name; the engine prefix ("Pocket-TTS: ") is
+        # dropped. It's only added back to disambiguate if two available engines
+        # ever expose a voice with the same name.
+        raw = [(v, engine) for engine in self.engines if engine.available()[0] for v in engine.voices()]
+        counts = Counter(name for name, _ in raw)
+        return [
+            (name if counts[name] == 1 else f"{name} ({engine.name})", (engine, name))
+            for name, engine in raw
+        ]
 
     def _make_combo(self, opts, index, preferred: str | None = None) -> QComboBox:
         combo = QComboBox()
         combo.setFont(QFont(LIGHT_FONT, 14))  # voice names in Switzer Light
-        for label, _ in opts:
-            combo.addItem(label)
         labels = [label for label, _ in opts]
-        if preferred in labels:
-            combo.setCurrentIndex(labels.index(preferred))
-        else:
-            combo.setCurrentIndex(index % len(opts) if opts else 0)
+        combo.addItems(labels)
+
+        # Type-to-search: an editable box with a case-insensitive "contains"
+        # completer, so you filter voices by typing instead of scrolling.
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        combo.lineEdit().setPlaceholderText("Type to search voices…")
+        completer = QCompleter(labels, combo)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.activated.connect(lambda text, c=combo: c.setCurrentIndex(c.findText(text)))
+        combo.setCompleter(completer)
+
+        # Migrate picks saved in the old "Engine: voice" format to bare names.
+        if preferred and preferred not in labels and ": " in preferred:
+            preferred = preferred.split(": ", 1)[1]
+        chosen = labels.index(preferred) if preferred in labels else (index % len(opts) if opts else 0)
+        combo.setCurrentIndex(chosen)
+
+        # If the typed text isn't a real voice, snap back to the current choice.
+        def snap_to_valid(c=combo):
+            if c.findText(c.currentText(), Qt.MatchFlag.MatchExactly) < 0:
+                idx = c.currentIndex() if c.currentIndex() >= 0 else 0
+                c.setCurrentIndex(idx)
+                c.setEditText(c.itemText(idx))
+
+        combo.lineEdit().editingFinished.connect(snap_to_valid)
         return combo
 
     def _default_narrator_label(self) -> str | None:
+        options = self._voice_options()
         for engine in self.engines:
             pick = getattr(engine, "default_narrator", lambda: None)()
             if pick and engine.available()[0]:
-                return f"{engine.name}: {pick}"
+                for label, (eng, v) in options:
+                    if eng is engine and v == pick:
+                        return label
         return None
 
     def _rebuild_casting(self):
@@ -940,7 +972,7 @@ class MainWindow(QMainWindow):
         self.dialog_voice_combos = {}
         remembered = self._pending_casting
 
-        narrator_pick = remembered.get("") or self._default_narrator_label()
+        narrator_pick = remembered.get("") or self.voice_memory.get("") or self._default_narrator_label()
         hosts = [self.cast_form_host]
         if self.dialog_cast_form_host is not None:
             hosts.append(self.dialog_cast_form_host)
@@ -961,7 +993,8 @@ class MainWindow(QMainWindow):
                 # Characters skip the narrator's voice so they never sound like the reader.
                 n_clones = 1 if narrator_pick else 0
                 for i, name in enumerate(self.screenplay.characters):
-                    combo = self._make_combo(opts, i + 1 + n_clones, remembered.get(name))
+                    preferred = remembered.get(name) or self.voice_memory.get(name)
+                    combo = self._make_combo(opts, i + 1 + n_clones, preferred)
                     if host is self.cast_form_host:
                         self.voice_combos[name] = combo
                     else:
@@ -976,7 +1009,23 @@ class MainWindow(QMainWindow):
 
     def _casting(self) -> dict[str, tuple]:
         opts = self._voice_options()
-        return {name: opts[c.currentIndex()][1] for name, c in self.voice_combos.items() if opts}
+        by_label = {label: voice for label, voice in opts}
+        result = {}
+        for name, combo in self.voice_combos.items():
+            text = combo.currentText()
+            if text in by_label:  # editable box: resolve by the shown voice name
+                result[name] = by_label[text]
+            elif opts:
+                result[name] = opts[max(0, combo.currentIndex())][1]
+        return result
+
+    def _remember_voices(self, labels: dict[str, str]) -> None:
+        """Persist character -> voice choices so future scripts auto-fill."""
+        valid = {label for label, _ in self._voice_options()}
+        for name, label in labels.items():
+            if label in valid:
+                self.voice_memory[name] = label
+        save_voice_memory(self.voice_memory)
 
     def _casting_labels(self, combos: dict[str, QComboBox] | None = None) -> dict[str, str]:
         combos = self.voice_combos if combos is None else combos

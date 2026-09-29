@@ -17,6 +17,7 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
 SETTINGS_PATH = CACHE_DIR / "settings.json"
 SESSION_PATH = CACHE_DIR / "session.json"
 LAST_AUDIO_PATH = CACHE_DIR / "last_run.wav"
+VOICE_MEMORY_PATH = CACHE_DIR / "voice_memory.json"
 
 
 @dataclass
@@ -69,6 +70,17 @@ class Session:
 
     def audio_is_reusable(self) -> bool:
         return bool(self.pdf_path) and Path(self.pdf_path).is_file() and LAST_AUDIO_PATH.is_file() and bool(self.cues)
+
+
+def load_voice_memory() -> dict[str, str]:
+    """Character name ("" = Narrator) -> the voice label last chosen for it, across
+    every script, so casting auto-fills a character you've cast before."""
+    data = _read_json(VOICE_MEMORY_PATH, {})
+    return data if isinstance(data, dict) else {}
+
+
+def save_voice_memory(mapping: dict[str, str]) -> None:
+    _write_json(VOICE_MEMORY_PATH, mapping)
 
 
 def _read_json(path: Path, default):
