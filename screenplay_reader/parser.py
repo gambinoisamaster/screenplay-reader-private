@@ -19,7 +19,47 @@ BEAT_RE = re.compile(r"^\(\s*(a\s+)?(long\s+)?(beat|pause|silence)s?\.?\s*\)$", 
 SCENE_RE = re.compile(r"^\d*\s*(INT|EXT|I/E|INT/EXT)[\s./]", re.I)
 # Trailing cue annotations: (CONT'D), (V.O.), (O.S.) — possibly stacked.
 CUE_PAREN_RE = re.compile(r"(\s*\([^)]*\))+\s*$")
-JUNK_RE = re.compile(r"^\(?\s*CONTINUED:?\s*\)?$", re.I)
+# "CONTINUED", "(CONTINUED)", "CONTINUED:", and scene-numbered forms like
+# "10  CONTINUED:  10" — but never "CONTINUOUS" (a real scene-heading word).
+JUNK_RE = re.compile(
+    r"^\s*\(?\s*(?:\d+[A-Za-z]?\s+)?CONTINUED\s*:?\s*(?:\d+[A-Za-z]?)?\s*\)?\s*$", re.I
+)
+
+# Character-cue delivery modes: ETHAN (V.O.) / (O.S.) / (O.C.) / (PRE-LAP).
+CUE_MODE_RE = re.compile(r"\(\s*(V\s*\.?\s*O\s*\.?|O\s*\.?\s*S\s*\.?|O\s*\.?\s*C\s*\.?|PRE\s*-?\s*LAP)\s*\)", re.I)
+CUE_MODE_WORDS = {"VO": "V.O.", "OS": "O.S.", "OC": "O.C.", "PRELAP": "PRE-LAP"}
+
+# Running headers / footers to drop (only when they sit in the page margins).
+_DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{2,4}\b")
+_REVISION_RE = re.compile(
+    r"\b(blue|pink|yellow|green|goldenrod|salmon|buff|cherry|tan|white|gold|gray|grey|ivory)\s+"
+    r"(revision|revisions|draft|pages|rev)\b",
+    re.I,
+)
+_EPISODE_HDR_RE = re.compile(
+    r"as broadcast|as aired|\bep\s*#|\bepisode\s*#|shooting draft|production draft|network draft|writer'?s draft",
+    re.I,
+)
+_PAGE_NUM_RE = re.compile(r"^\s*\d+[A-Za-z]?\.?\s*$")
+
+# Whole production pages to ignore.
+PRODUCTION_PAGE_RE = re.compile(
+    r"^\s*(cast list|location list|set list|character list|"
+    r"list of (?:locations|characters|sets)|sets? and locations)\s*[:.]?\s*$",
+    re.I,
+)
+
+# Title-page detection: author credit lines, and junk to skip on the cover.
+_BY_INLINE_RE = re.compile(r"^\s*(?:written|screenplay|teleplay|story|created|adapted)\s+by\b[:.\s]*(.*)$", re.I)
+_BY_ALONE_RE = re.compile(
+    r"^\s*(?:written\s+by|screenplay\s+by|teleplay\s+by|story\s+by|by)\s*[:.]?\s*$", re.I
+)
+_COVER_JUNK_RE = re.compile(
+    r"confidential|do not|property of|all rights|copyright|©|\bdrafts?\b|revision|\brev\.|"
+    r"registered|\bwga\b|for your consideration|\bfyc\b|educational purposes|\bfade in\b|"
+    r"\bcontact\b|represented by|\binc\.|\bllc\b|productions?\b|\d{1,2}/\d{1,2}/\d{2,4}",
+    re.I,
+)
 
 
 @dataclass
@@ -28,7 +68,64 @@ class Element:
     text: str
     character: str | None = None  # speaker, for dialogue/parenthetical
     is_beat: bool = False  # parenthetical that triggers a pause
+    cue_mode: str | None = None  # V.O. / O.S. / O.C. / PRE-LAP on a character cue
     lines: list[str] = field(default_factory=list)  # original line breaks
+
+
+def _cue_mode(text: str) -> str | None:
+    m = CUE_MODE_RE.search(text)
+    if not m:
+        return None
+    return CUE_MODE_WORDS.get(re.sub(r"[^A-Za-z]", "", m.group(1)).upper())
+
+
+def _is_header_footer(text: str) -> bool:
+    """A running header/footer line (episode slug, revision, date, page no.).
+    Callers gate this to the page margins so body text is never affected."""
+    if _PAGE_NUM_RE.match(text):
+        return True
+    if _EPISODE_HDR_RE.search(text) or _REVISION_RE.search(text) or _DATE_RE.search(text):
+        return True
+    # e.g. "EP#101 ... "Smoke Gets in Your Eyes"  5/16/07  2."
+    return bool(re.search(r"\b\d+[A-Za-z]?\.\s*$", text)) and len(text) > 8
+
+
+def _is_production_page(page_texts: list[str]) -> bool:
+    return any(PRODUCTION_PAGE_RE.match(t) for t in page_texts[:4])
+
+
+def _cover_intro(cover: list["Element"]) -> list["Element"]:
+    """From title-page lines keep only the title and author (read aloud); drop
+    drafts, dates, disclaimers, etc. Returns [] unless an author credit is
+    present, which is a strong signal that this really was a title page."""
+    lines = [e.text.strip() for e in cover if e.text.strip()]
+    author = None
+    author_idx = None
+    for i, ln in enumerate(lines):
+        inline = _BY_INLINE_RE.match(ln)
+        if inline and inline.group(1).strip(" .,-"):
+            author, author_idx = inline.group(1).strip(" .,-"), i
+            break
+        if _BY_ALONE_RE.match(ln) and i + 1 < len(lines):
+            author, author_idx = lines[i + 1].strip(" .,-"), i + 1
+            break
+    if not author:
+        return []
+    title = None
+    for i, ln in enumerate(lines):
+        if i == author_idx or _BY_INLINE_RE.match(ln) or _BY_ALONE_RE.match(ln):
+            continue
+        if _COVER_JUNK_RE.search(ln):
+            continue
+        title = ln.strip('"“” ')
+        break
+    intro: list[Element] = []
+    if title:
+        title = title if title.endswith((".", "!", "?")) else title + "."
+        intro.append(Element("action", title, lines=[title]))
+    credit = f"Written by {author}."
+    intro.append(Element("action", credit, lines=[credit]))
+    return intro
 
 
 @dataclass
@@ -79,10 +176,20 @@ def parse_screenplay(pdf_path: str) -> Screenplay:
     raw_lines: list[tuple[float, str, bool]] = []  # (x0, text, starts_new_paragraph)
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
+            page_lines = page.extract_text_lines()
+            page_texts = [t for t in (_collapse_doubled(l["text"].strip()) for l in page_lines) if t]
+            if _is_production_page(page_texts):
+                continue  # skip whole CAST LIST / LOCATION LIST pages
+            page_height = page.height
             prev_bottom: float | None = None
-            for line in page.extract_text_lines():
+            for line in page_lines:
                 text = _collapse_doubled(line["text"].strip())
                 if not text or JUNK_RE.match(text):
+                    continue
+                # Drop running headers/footers, but only in the page margins so
+                # body text that happens to contain a date is never removed.
+                in_margin = line["top"] < 62 or line["bottom"] > page_height - 52
+                if in_margin and _is_header_footer(text):
                     continue
                 # A vertical gap larger than ~1.5 line heights means a blank
                 # line separated the paragraphs in the original script.
@@ -134,7 +241,9 @@ def parse_screenplay(pdf_path: str) -> Screenplay:
             current_char = _clean_cue(text)
             if current_char not in characters:
                 characters.append(current_char)
-            elements.append(Element("character", text, character=current_char))
+            elements.append(
+                Element("character", text, character=current_char, cue_mode=_cue_mode(text))
+            )
         elif kind == "dialogue":
             prev = elements[-1] if elements else None
             merge = (
@@ -161,11 +270,10 @@ def parse_screenplay(pdf_path: str) -> Screenplay:
             else:
                 elements.append(Element(kind, text, lines=[text]))
 
-    # Drop title-page material: everything before the first scene heading.
-    for i, e in enumerate(elements):
-        if e.kind == "scene":
-            elements = elements[i:]
-            break
+    # Title page: keep only the title and author (read aloud), drop the rest.
+    first_scene = next((i for i, e in enumerate(elements) if e.kind == "scene"), None)
+    if first_scene is not None:
+        elements = _cover_intro(elements[:first_scene]) + elements[first_scene:]
 
     # Only people who actually speak belong in the casting list.
     speakers = {e.character for e in elements if e.kind == "dialogue" and e.character}

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="780" viewBox="0 0 1100 780">
+  <defs>
+    <radialGradient id="paper" cx="50%" cy="45%" r="75%"><stop stop-color="#f0efeb"/><stop offset="1" stop-color="#a8a8a5"/></radialGradient>
+    <radialGradient id="vinyl" cx="46%" cy="38%" r="68%"><stop stop-color="#242424"/><stop offset=".55" stop-color="#050505"/><stop offset="1" stop-color="#191919"/></radialGradient>
+    <filter id="papergrain"><feTurbulence type="fractalNoise" baseFrequency=".76" numOctaves="2"/><feColorMatrix values=".3 0 0 0 .3 .3 0 0 0 .3 .3 0 0 0 .3 0 0 0 .11 0"/></filter>
+    <filter id="inkbleed" x="-8%" y="-15%" width="116%" height="130%"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="12" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/><feGaussianBlur stdDeviation=".25"/></filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur stdDeviation="16"/></filter>
+    <clipPath id="disc"><circle cx="550" cy="390" r="306"/></clipPath>
+    <pattern id="grooves" width="3" height="3" patternUnits="userSpaceOnUse"><path d="M0 0H3" stroke="#777" stroke-opacity=".09"/></pattern>
+  </defs>
+  <rect width="1100" height="780" fill="url(#paper)"/>
+  <rect width="1100" height="780" filter="url(#papergrain)" opacity=".32"/>
+  <text x="46" y="68" font-family="Courier New,monospace" font-size="17" font-weight="bold" letter-spacing="3" fill="#111">SCRIPT RADIO</text>
+  <text x="48" y="94" font-family="Courier New,monospace" font-size="11" letter-spacing="2.8" fill="#454545">A SCREENPLAY LISTENING ROOM / VOL. 01</text>
+  <text x="1050" y="70" text-anchor="end" font-family="Courier New,monospace" font-size="14" letter-spacing="2" fill="#111">SIDE A</text>
+  <g transform="translate(550 390) scale(1.2) translate(-550 -390)">
+  <ellipse cx="565" cy="415" rx="320" ry="315" fill="#111" opacity=".24" filter="url(#shadow)"/>
+  <circle cx="550" cy="390" r="306" fill="url(#vinyl)"/>
+  <circle cx="550" cy="390" r="300" fill="url(#grooves)"/>
+  <g clip-path="url(#disc)" opacity=".4" fill="none" stroke="#bcbab4">
+    <circle cx="550" cy="390" r="282"/><circle cx="550" cy="390" r="274"/><circle cx="550" cy="390" r="267"/><circle cx="550" cy="390" r="258"/><circle cx="550" cy="390" r="248"/><circle cx="550" cy="390" r="239"/><circle cx="550" cy="390" r="228"/><circle cx="550" cy="390" r="215"/>
+    <path d="M242 281l60 15m481-138 38-22M320 638l36 12m378-11 45 18M318 249l24-24m414 388 25-20M716 184l29-24M370 612l16 24" stroke-width="2"/>
+  </g>
+  <g clip-path="url(#disc)">
+    <text x="552" y="237" text-anchor="middle" transform="rotate(-6 552 220)" font-family="American Typewriter" font-size="62" font-weight="bold" letter-spacing="7" fill="#f1eee8" opacity=".28" filter="url(#inkbleed)">SCRIPT</text>
+    <text x="550" y="235" text-anchor="middle" transform="rotate(-6 550 220)" font-family="American Typewriter" font-size="62" font-weight="bold" letter-spacing="7" fill="#f1eee8" filter="url(#inkbleed)">SCRIPT</text>
+    <path d="M341 249l8-5 3 7 8-4 2 8 8-3m366-20 7-5 4 8 9-4 4 9" fill="none" stroke="#d8d6cf" stroke-width="3" opacity=".55"/>
+    <text x="346" y="626" transform="rotate(-8 346 626)" font-family="Impact" font-size="133" fill="#f3f0e9">R</text>
+    <text x="435" y="667" transform="rotate(4 435 667)" font-family="Impact" font-size="126" fill="#f3f0e9">A</text>
+    <text x="547" y="644" transform="rotate(-3 547 644)" font-family="Impact" font-size="134" fill="#f3f0e9">D</text>
+    <text x="659" y="676" transform="rotate(7 659 676)" font-family="Impact" font-size="132" fill="#f3f0e9">I</text>
+    <text x="719" y="642" transform="rotate(-6 719 642)" font-family="Impact" font-size="133" fill="#f3f0e9">O</text>
+  </g>
+  <circle cx="550" cy="390" r="112" fill="#d3d2ce"/>
+  <circle cx="550" cy="390" r="105" fill="none" stroke="#aaa9a5" stroke-width="2"/>
+  <text x="550" y="374" text-anchor="middle" font-family="Courier New,monospace" font-size="12" letter-spacing="3" fill="#111">CUE 001</text>
+  <text x="550" y="423" text-anchor="middle" font-family="Courier New,monospace" font-size="13" font-weight="bold" letter-spacing="2" fill="#111">READ / REWIND</text>
+  <circle cx="550" cy="390" r="7" fill="#171717"/>
+  </g>
+  <text x="48" y="120" font-family="Courier New,monospace" font-size="10" letter-spacing="2" fill="#333">TURN THE PAGE. DROP THE NEEDLE.</text>
+  <g font-family="Courier New,monospace" font-size="13" font-weight="bold" letter-spacing="1">
+    <rect x="77" y="707" width="190" height="44" fill="#f4f2ed" stroke="#111" stroke-width="2"/><text x="172" y="735" text-anchor="middle" fill="#111">+  NEW SCRIPT</text>
+    <rect x="833" y="707" width="190" height="44" fill="#111"/><text x="928" y="735" text-anchor="middle" fill="#f4f2ed">PREVIOUS  /  -</text>
+  </g>
+</svg>

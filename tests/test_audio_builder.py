@@ -111,6 +111,23 @@ def test_cues_ordered_and_within_audio():
     assert result.issues == []
 
 
+def test_streamed_chunks_reconstruct_complete_audio():
+    chunks = []
+    engine = RecordingEngine()
+    elements = script()
+
+    result = build_audio(
+        elements,
+        lambda el: (engine, "v"),
+        speak_character_names=False,
+        audio_chunk=lambda data, start, end, index: chunks.append((data, start, end, index)),
+    )
+
+    assert b"".join(chunk[0] for chunk in chunks) == result.audio.raw_data
+    assert chunks[0][1] == 0
+    assert chunks[-1][2] == len(result.audio)
+
+
 class FlakyEngine(RecordingEngine):
     """Says the wrong thing the first time it's asked for any text."""
 

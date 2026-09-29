@@ -27,9 +27,13 @@ class Settings:
     single_voice: bool = False
     # Transcribe every generated segment with Whisper and regenerate mismatches.
     validate_audio: bool = False
+    # Read delivery parentheticals like "(sarcastically)" aloud.
+    read_parentheticals: bool = True
     beat_seconds: float = 2.0
     highlight: bool = True
     theme: str = "light"
+    # Playback speed for the finished audio (1.0 = normal).
+    playback_rate: float = 1.0
 
     @classmethod
     def load(cls) -> "Settings":

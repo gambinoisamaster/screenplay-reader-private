@@ -63,16 +63,23 @@ def _title_word(word: str) -> str:
     return re.sub(r"(['\u2019])([A-Za-z]{1,2})\b", lambda m: m.group(1) + m.group(2).lower(), word)
 
 
-def _speak_caps(text: str, min_len: int, names: set[str] = frozenset()) -> str:
+_VOWEL_RE = re.compile(r"[AEIOUY]")
+
+
+def _speak_caps(text: str, min_len: int, names: set[str] = frozenset(), keep_initialisms: bool = False) -> str:
     """Turn all-caps words into readable case.
 
     A word is converted when it is a known character name, or when it is at
-    least `min_len` letters long (short caps like 'TV' are likely acronyms).
+    least `min_len` letters long. With keep_initialisms, an all-caps word with
+    no vowel (TV, CCTV, DNA) is left alone so the engine spells it out.
     """
     out = []
     for word in text.split(" "):
         letters = re.sub(r"[^A-Za-z]", "", word)
-        if letters and letters.isupper() and (letters in names or len(letters) >= min_len):
+        is_caps = bool(letters) and letters.isupper()
+        if is_caps and letters in names:
+            out.append(_title_word(word))
+        elif is_caps and len(letters) >= min_len and (not keep_initialisms or _VOWEL_RE.search(letters)):
             out.append(_title_word(word))
         else:
             out.append(word)
@@ -100,19 +107,40 @@ def scene_heading(text: str) -> str:
     return spoken + "." if spoken and not spoken.endswith((".", "!", "?")) else spoken
 
 
-def character_cue(name: str) -> str:
-    """'ETHAN' -> 'Ethan.'  'COP #2' -> 'Cop number 2.'  Already cleaned of (CONT'D)."""
+_CUE_MODE_SPOKEN = {
+    "V.O.": "{name} Voice-Over",
+    "O.S.": "{name} off-screen",
+    "O.C.": "{name} Off-Camera",
+    "PRE-LAP": "Pre-lap {name}",
+}
+
+
+def character_cue(name: str, mode: str | None = None) -> str:
+    """'ETHAN' -> 'Ethan.'  'COP #2' -> 'Cop number 2.'  With a delivery mode,
+    'ETHAN' + 'V.O.' -> 'Ethan Voice-Over.'  Already cleaned of (CONT'D)."""
     name = _HASH_RE.sub(r"number \1", collapse_whitespace(name))
     spoken = _speak_caps(name, min_len=2)
+    if mode in _CUE_MODE_SPOKEN:
+        spoken = _CUE_MODE_SPOKEN[mode].format(name=spoken)
     return spoken + "." if spoken and not spoken.endswith((".", "!", "?")) else spoken
 
 
 def action_line(text: str, names: set[str]) -> str:
-    return _speak_caps(collapse_whitespace(text), min_len=4, names=names)
+    # Convert all-caps *words* (emphasis/sounds like SLAMS) and known character
+    # names to normal case, but leave short all-caps (ER, FBI) and vowel-less
+    # initialisms (TV, CCTV, DNA) so the engine spells them out instead of
+    # reading "ER" as "uhr".
+    return _speak_caps(collapse_whitespace(text), min_len=4, names=names, keep_initialisms=True)
 
 
 def dialogue(text: str) -> str:
     return collapse_whitespace(text)
+
+
+def parenthetical(text: str) -> str:
+    """'(sarcastically)' -> 'sarcastically.' — the words inside a delivery direction."""
+    spoken = collapse_whitespace(text).strip("()").strip()
+    return spoken + "." if spoken and not spoken.endswith((".", "!", "?")) else spoken
 
 
 def for_element(el: Element, names: set[str]) -> str:
@@ -120,7 +148,7 @@ def for_element(el: Element, names: set[str]) -> str:
     if el.kind == "scene":
         return scene_heading(el.text)
     if el.kind == "character":
-        return character_cue(el.character or el.text)
+        return character_cue(el.character or el.text, el.cue_mode)
     if el.kind == "action":
         return action_line(el.text, names)
     return dialogue(el.text)

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="780" viewBox="0 0 1100 780">
+  <defs>
+    <linearGradient id="wall" x2=".8" y2="1"><stop stop-color="#242323"/><stop offset=".58" stop-color="#111"/><stop offset="1" stop-color="#292725"/></linearGradient>
+    <radialGradient id="vinyl" cx="40%" cy="35%" r="70%"><stop stop-color="#292929"/><stop offset=".2" stop-color="#090909"/><stop offset="1" stop-color="#020202"/></radialGradient>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".82" numOctaves="2"/><feColorMatrix values=".25 0 0 0 .55 .25 0 0 0 .52 .25 0 0 0 .43 0 0 0 .18 0"/></filter>
+    <filter id="rough" x="-8%" y="-15%" width="116%" height="130%"><feTurbulence type="fractalNoise" baseFrequency=".055" numOctaves="2" seed="8" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="2.8"/><feGaussianBlur stdDeviation=".3"/></filter>
+    <clipPath id="disc"><circle cx="550" cy="390" r="309"/></clipPath>
+    <pattern id="groove" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M0 0H5" stroke="#fff" stroke-opacity=".14"/></pattern>
+  </defs>
+  <rect width="1100" height="780" fill="url(#wall)"/>
+  <rect width="1100" height="780" filter="url(#grain)" opacity=".5"/>
+  <path d="M0 130H1100M0 647H1100" stroke="#d7ff38" stroke-width="1" opacity=".52"/>
+  <text x="48" y="74" font-family="Arial,sans-serif" font-size="15" font-weight="bold" letter-spacing="5" fill="#d7ff38">SCRIPT RADIO</text>
+  <text x="48" y="99" font-family="Courier New,monospace" font-size="11" letter-spacing="2" fill="#c6c0b6">NACHTPROGRAMM / 01:47 AM</text>
+  <text x="1050" y="76" text-anchor="end" font-family="Arial,sans-serif" font-size="13" font-weight="bold" letter-spacing="2" fill="#e9e5db">BERLIN / 52°31' N</text>
+  <circle cx="550" cy="390" r="309" fill="url(#vinyl)" stroke="#66635c" stroke-width="1"/>
+  <circle cx="550" cy="390" r="302" fill="url(#groove)"/>
+  <g clip-path="url(#disc)" fill="none" stroke="#76736c" opacity=".48">
+    <circle cx="550" cy="390" r="290"/><circle cx="550" cy="390" r="281"/><circle cx="550" cy="390" r="269"/><circle cx="550" cy="390" r="256"/><circle cx="550" cy="390" r="245"/><circle cx="550" cy="390" r="224"/><circle cx="550" cy="390" r="211"/>
+  </g>
+  <g clip-path="url(#disc)">
+    <path d="M315 196l32-12 26 9 18-14 25 6m-137 31 12-8 8 6 20-11 11 8m364-27 18-9 13 11 15-5 12 12m-13 347 19-13 17 12 21-8 15 18M340 579l13-8 18 10 15-6 18 14" fill="none" stroke="#a29f96" stroke-width="8" opacity=".45"/>
+    <text x="552" y="232" text-anchor="middle" transform="rotate(-8 552 220)" font-family="American Typewriter" font-size="55" font-weight="bold" letter-spacing="8" fill="#e9e3d6" opacity=".3" filter="url(#rough)">SCRIPT</text>
+    <text x="550" y="230" text-anchor="middle" transform="rotate(-8 550 220)" font-family="American Typewriter" font-size="55" font-weight="bold" letter-spacing="8" fill="#e9e3d6" filter="url(#rough)">SCRIPT</text>
+    <path d="M395 245l160 4m6 0 149 4" stroke="#e9e3d6" stroke-width="1" opacity=".45"/>
+    <text x="326" y="633" transform="rotate(-10 326 633)" font-family="Arial Black" font-size="126" font-weight="900" fill="#d7ff38">R</text>
+    <text x="422" y="680" transform="rotate(6 422 680)" font-family="Arial Black" font-size="122" font-weight="900" fill="#d7ff38">A</text>
+    <text x="530" y="638" transform="rotate(-4 530 638)" font-family="Arial Black" font-size="127" font-weight="900" fill="#d7ff38">D</text>
+    <text x="652" y="683" transform="rotate(9 652 683)" font-family="Arial Black" font-size="124" font-weight="900" fill="#d7ff38">I</text>
+    <text x="705" y="642" transform="rotate(-7 705 642)" font-family="Arial Black" font-size="127" font-weight="900" fill="#d7ff38">O</text>
+  </g>
+  <circle cx="550" cy="390" r="104" fill="#1b1b1a" stroke="#d7ff38" stroke-width="2"/>
+  <circle cx="550" cy="390" r="90" fill="none" stroke="#77736b" stroke-width="1"/>
+  <text x="550" y="379" text-anchor="middle" font-family="Courier New,monospace" font-size="12" letter-spacing="4" fill="#e9e5db">AFTER</text>
+  <text x="550" y="400" text-anchor="middle" font-family="Courier New,monospace" font-size="12" letter-spacing="4" fill="#e9e5db">HOURS</text>
+  <circle cx="550" cy="390" r="7" fill="#d7ff38"/>
+  <g font-family="Arial,sans-serif" font-size="12" font-weight="bold" letter-spacing="2">
+    <rect x="73" y="698" width="202" height="48" fill="#d7ff38"/><text x="174" y="728" text-anchor="middle" fill="#111">+  NEW SCRIPT</text>
+    <rect x="825" y="698" width="202" height="48" fill="none" stroke="#eee8dc" stroke-width="1.5"/><text x="926" y="728" text-anchor="middle" fill="#eee8dc">PREVIOUS SCRIPT  -</text>
+  </g>
+  <text x="550" y="739" text-anchor="middle" font-family="Courier New,monospace" font-size="10" letter-spacing="3" fill="#aaa69c">NO REQUESTS. NO RULES. JUST SIDE A.</text>
+</svg>

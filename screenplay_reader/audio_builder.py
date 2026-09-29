@@ -96,9 +96,10 @@ def _beat_segment(ms: int, fillers: list[AudioSegment]) -> AudioSegment:
     return base
 
 
-def _dialogue_chunks(text: str) -> list[str | None]:
-    """Split dialogue on inline parentheticals. None = beat pause;
-    delivery directions like '(sarcastically)' are dropped entirely."""
+def _dialogue_chunks(text: str, read_parentheticals: bool = True) -> list[str | None]:
+    """Split dialogue on inline parentheticals. None = beat pause; delivery
+    directions like '(sarcastically)' are spoken when read_parentheticals is on,
+    otherwise dropped."""
     chunks: list[str | None] = []
     pos = 0
     for m in INLINE_PAREN_RE.finditer(text):
@@ -107,6 +108,10 @@ def _dialogue_chunks(text: str) -> list[str | None]:
             chunks.append(before)
         if BEAT_RE.match(m.group(0)):
             chunks.append(None)
+        elif read_parentheticals:
+            inner = m.group(1).strip()
+            if inner:
+                chunks.append(inner)
         pos = m.end()
     tail = text[pos:].strip()
     if tail:
@@ -139,8 +144,11 @@ def build_audio(
     beat_seconds: float = 2.0,
     *,
     speak_character_names: bool = True,
+    read_parentheticals: bool = True,
     checker: Transcriber | None = None,
     progress: Callable[[int, int, str], None] = lambda done, total, msg: None,
+    audio_chunk: Callable[[bytes, int, int, int | None], None] | None = None,
+    unit_completed: Callable[[int, int], None] = lambda done, total: None,
     cancelled: Callable[[], bool] = lambda: False,
 ) -> BuildResult:
     """voice_for(element) returns (engine, voice) for anything to vocalize,
@@ -159,7 +167,14 @@ def build_audio(
         if el.kind == "parenthetical":
             if el.is_beat:
                 plan.append((i, "pause", None))
-            continue  # delivery direction — never vocalized
+            elif read_parentheticals:
+                ev = voice_for(el)
+                if ev is not None:
+                    engine, voice = ev
+                    spoken = speech.parenthetical(el.text)
+                    if spoken:
+                        plan.append((i, "speech", (engine, voice, spoken, GAP_MS)))
+            continue  # delivery direction — spoken only when read_parentheticals is on
         if el.kind == "character" and not speak_character_names:
             continue  # the voice change itself announces the speaker
         ev = voice_for(el)
@@ -167,7 +182,7 @@ def build_audio(
             continue
         engine, voice = ev
         if el.kind == "dialogue":
-            for chunk in _dialogue_chunks(el.text):
+            for chunk in _dialogue_chunks(el.text, read_parentheticals):
                 if chunk is None:
                     plan.append((i, "pause", None))
                 else:
@@ -190,6 +205,8 @@ def build_audio(
                 cues[-1].end_ms = end
             else:
                 cues.append(Cue(start, end, element_index))
+        if audio_chunk is not None:
+            audio_chunk(seg.raw_data, start, end, element_index)
 
     total = len(plan)
     for done, (idx, kind, payload) in enumerate(plan):
@@ -205,6 +222,7 @@ def build_audio(
                 issues.append(issue)
             append(seg, idx)
             append(_silence(gap), None)
+        unit_completed(done + 1, total)
     progress(total, total, "Stitching complete")
 
     audio = AudioSegment(bytes(raw), frame_rate=FRAME_RATE, sample_width=2, channels=1)
