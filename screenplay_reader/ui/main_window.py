@@ -547,15 +547,16 @@ class MainWindow(QMainWindow):
         self._stream_timer.setInterval(20)
         self._stream_timer.timeout.connect(self._pump_stream)
 
-    def _set_ready_indicator(self, ready: bool):
-    # Green arrow next to Play = there is audio to play.
+    def _set_ready_indicator(self, ready: bool, play_sound: bool = False):
+        # Green arrow next to Play = there is audio to play.
         self.play_button.setIcon(self._ready_icon if ready else QIcon())
-        self.play_button.setText("" if ready else "▶") # <-- Add this line to clear the text
+        self.play_button.setText("" if ready else "▶")
         self.play_button.setToolTip(
             "Audio is ready - press Play" if ready else "Generate audio first"
         )
-    
-        if ready:
+        # The "ding" only fires for freshly generated audio, never when
+        # reopening audio that was made in an earlier session.
+        if ready and play_sound:
             self.ready_sound.play()
 
 
@@ -1220,7 +1221,7 @@ class MainWindow(QMainWindow):
         if not self._stream_available and done >= threshold:
             self._stream_available = True
             self.play_button.setEnabled(True)
-            self._set_ready_indicator(True)
+            self._set_ready_indicator(True, play_sound=True)
             self.statusBar().showMessage(
                 f"First audio ready ({done}/{total} passages); generation continues in the background"
             )
