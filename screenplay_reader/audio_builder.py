@@ -44,6 +44,7 @@ from .validate import Issue, Transcriber, MAX_ATTEMPTS
 FRAME_RATE = 44100
 GAP_MS = 300  # breathing room between elements
 CUE_GAP_MS = 150  # shorter: the name should lead straight into the line
+DECLICK_MS = 8  # tiny fade at each spoken segment's edges to kill concatenation ticks
 FILLER_GAIN_DB = -18  # fillers should be felt, not heard
 FILLERS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fillers"
 
@@ -76,6 +77,19 @@ def _normalize(seg: AudioSegment) -> AudioSegment:
 
 def _silence(ms: int) -> AudioSegment:
     return AudioSegment.silent(duration=ms, frame_rate=FRAME_RATE)
+
+
+def _declick(seg: AudioSegment) -> AudioSegment:
+    """A few ms of fade at each edge so stitched segments don't 'click'.
+
+    A Pocket-TTS segment can end (or start) on a non-zero sample; butting two of
+    them together makes the waveform jump, which the ear hears as a faint tick.
+    Ramping each edge to zero removes that discontinuity. The fade is far shorter
+    than a syllable, so the speech itself isn't audibly clipped."""
+    ms = min(DECLICK_MS, len(seg) // 2)
+    if ms <= 0:
+        return seg
+    return seg.fade_in(ms).fade_out(ms)
 
 
 def _load_fillers() -> list[AudioSegment]:
@@ -220,7 +234,7 @@ def build_audio(
             seg, issue = _synthesize_checked(engine, voice, text, checker, idx)
             if issue:
                 issues.append(issue)
-            append(seg, idx)
+            append(_declick(seg), idx)
             append(_silence(gap), None)
         unit_completed(done + 1, total)
     progress(total, total, "Stitching complete")
