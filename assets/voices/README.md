@@ -1,7 +1,7 @@
 # Cloned voices
 
 Drop a clean, mono `.wav` of 10–20 seconds here and it appears in the
-Casting panel under its file name. A file called `Default_narrator.wav` is
+Casting panel under its file name. A file called `Default_Narrator_Male.wav` is
 selected for the Narrator automatically. For OmniVoice, add the exact words
 spoken in it as `NAME.wav.txt` beside it.
 

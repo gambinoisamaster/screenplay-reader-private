@@ -36,7 +36,7 @@ Open source, for **non-commercial use** (see Credits & licenses below).
   filler noises from `assets/fillers/`.
 - **Voice casting & cloning** — assign any voice to each character and the
   Narrator. Drop a `.wav` into `assets/voices/` and it appears as a cloneable
-  voice; `Default_narrator.wav` is picked for the Narrator automatically.
+  voice; `Default_Narrator_Male.wav` is picked for the Narrator automatically.
 - **Live highlighting, click to seek** — the script scrolls and highlights
   the line being spoken. Click any line (a scene heading, say) and playback
   jumps there.

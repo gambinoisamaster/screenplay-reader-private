@@ -973,7 +973,13 @@ class MainWindow(QMainWindow):
         self.dialog_voice_combos = {}
         remembered = self._pending_casting
 
-        narrator_pick = remembered.get("") or self.voice_memory.get("") or self._default_narrator_label()
+        # A remembered narrator whose sample was renamed or deleted is skipped, so the
+        # default narrator wins instead of whatever voice happens to be listed first.
+        labels = {label for label, _ in opts}
+        candidates = (remembered.get(""), self.voice_memory.get(""), self._default_narrator_label())
+        narrator_pick = next(
+            (p for p in candidates if p and (p in labels or p.split(": ", 1)[-1] in labels)), None
+        )
         hosts = [self.cast_form_host]
         if self.dialog_cast_form_host is not None:
             hosts.append(self.dialog_cast_form_host)

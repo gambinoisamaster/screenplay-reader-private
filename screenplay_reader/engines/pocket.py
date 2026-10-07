@@ -25,8 +25,8 @@ from pydub import AudioSegment
 from .base import TTSEngine
 
 VOICES_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "voices"
-CLONE_SUFFIX = ""  # label is the bare file stem, e.g. "Default_Male_Narrator"
-DEFAULT_NARRATOR_STEM = "Default_Male_Narrator"
+CLONE_SUFFIX = ""  # label is the bare file stem, e.g. "Default_Narrator_Male"
+DEFAULT_NARRATOR_STEM = "Default_Narrator_Male"
 
 PREDEFINED_VOICES = [
     "alba", "anna", "azelma", "bill_boerst", "caro_davy", "charles",
