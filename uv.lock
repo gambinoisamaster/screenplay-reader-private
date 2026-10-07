@@ -1371,6 +1371,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "num2words" },
+    { name = "numpy" },
     { name = "pdfplumber" },
     { name = "pocket-tts", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
     { name = "pydub" },
@@ -1400,6 +1401,7 @@ requires-dist = [
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'mlx-tts'", specifier = ">=0.5.3" },
     { name = "mlx-whisper", marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'validate'", specifier = ">=0.4" },
     { name = "num2words", specifier = ">=0.5" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "pdfplumber", specifier = ">=0.11.10" },
     { name = "pocket-tts", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'", specifier = ">=2.1.0" },
     { name = "pydub", specifier = ">=0.25.1" },

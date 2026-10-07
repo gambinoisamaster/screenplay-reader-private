@@ -1530,7 +1530,8 @@ class MainWindow(QMainWindow):
         if i is None:
             return
         # Jump to this element's cue, or the next spoken one (a delivery
-        # parenthetical, or a name cue when names are skipped, has no audio).
+        # parenthetical when parentheticals aren't read, or a name cue when
+        # names are skipped, has no audio).
         target = next((c for c in self.cues if c.element_index >= i), None)
         if target is None:
             return

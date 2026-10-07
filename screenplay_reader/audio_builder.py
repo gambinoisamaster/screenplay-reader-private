@@ -9,7 +9,10 @@ Script Elements which are audio-generated (elements as defined by Final Draft) (
 - Character names (only when signaling a line of dialogue). The default settings use the narrator's voice but under settings, skipping character names is possible before audio-generation.  
 - If this option is turned on, the audio will simply say the line of dialogue.
 - Character names inside action lines are always read either way.
-- dialogue, verbatim; delivery parentheticals like "(sarcastically)" never
+- dialogue, verbatim
+- delivery parentheticals like "(sarcastically)", on their own line or inline in
+  dialogue, read in the narrator's voice when "Read parentheticals" is on (the
+  default); skipped when it's off.
 - "(beat)" / "(pause)" as a pause
 
 Every piece of text is whitespace-collapsed before it reaches an engine, so
@@ -20,6 +23,10 @@ Optional validation: when a Transcriber is supplied, each spoken segment is
 transcribed and compared to its text; a mismatch is regenerated up to
 MAX_ATTEMPTS times and the best take is kept. Segments that never passed are
 reported as Issues so the user can decide whether to regenerate.
+
+Even volume: every spoken segment is leveled to the same perceived loudness
+(see loudness.py), so a voice sample recorded quietly or loudly makes no
+difference to how loud its character sounds.
 
 Beat pauses: a "(beat)" / "(pause)" parenthetical becomes a stretch of
 near-silence. If any audio files exist in assets/fillers/, one is chosen at
@@ -38,6 +45,7 @@ from typing import Callable
 from pydub import AudioSegment
 
 from . import speech
+from .loudness import level
 from .parser import BEAT_RE, Element
 from .validate import Issue, Transcriber, MAX_ATTEMPTS
 
@@ -75,6 +83,12 @@ def _normalize(seg: AudioSegment) -> AudioSegment:
     return seg.set_frame_rate(FRAME_RATE).set_channels(1).set_sample_width(2)
 
 
+def _bytes_to_ms(n: int) -> int:
+    """Time at byte offset n of the 16-bit mono track, rounded the way
+    len(AudioSegment) rounds, so the last cue/chunk ends at len(audio)."""
+    return round(1000 * (n // 2) / FRAME_RATE)
+
+
 def _silence(ms: int) -> AudioSegment:
     return AudioSegment.silent(duration=ms, frame_rate=FRAME_RATE)
 
@@ -110,26 +124,24 @@ def _beat_segment(ms: int, fillers: list[AudioSegment]) -> AudioSegment:
     return base
 
 
-def _dialogue_chunks(text: str, read_parentheticals: bool = True) -> list[str | None]:
-    """Split dialogue on inline parentheticals. None = beat pause; delivery
-    directions like '(sarcastically)' are spoken when read_parentheticals is on,
-    otherwise dropped."""
-    chunks: list[str | None] = []
+def _dialogue_chunks(text: str, read_parentheticals: bool = True) -> list[tuple[str, str | None]]:
+    """Split dialogue on inline parentheticals into ('line', text), ('pause', None)
+    for a beat, and ('direction', '(sarcastically)') for a delivery direction —
+    kept only when read_parentheticals is on, otherwise dropped."""
+    chunks: list[tuple[str, str | None]] = []
     pos = 0
     for m in INLINE_PAREN_RE.finditer(text):
         before = text[pos : m.start()].strip()
         if before:
-            chunks.append(before)
+            chunks.append(("line", before))
         if BEAT_RE.match(m.group(0)):
-            chunks.append(None)
+            chunks.append(("pause", None))
         elif read_parentheticals:
-            inner = m.group(1).strip()
-            if inner:
-                chunks.append(inner)
+            chunks.append(("direction", m.group(0)))
         pos = m.end()
     tail = text[pos:].strip()
     if tail:
-        chunks.append(tail)
+        chunks.append(("line", tail))
     return chunks
 
 
@@ -168,8 +180,11 @@ def build_audio(
     """voice_for(element) returns (engine, voice) for anything to vocalize,
     or None to skip. It is asked about scene, action, dialogue and — when
     speak_character_names is on — character elements (answer with the
-    narrator). Delivery parentheticals never reach it; beat parentheticals
-    become pauses attributed to their element."""
+    narrator). When read_parentheticals is on, delivery parentheticals reach
+    it too as parenthetical elements — inline ones like "Sure. (sarcastically)
+    Great." included — so they're read in the same voice (the narrator, in the
+    app) rather than the speaker's; when it's off they're skipped. Beat
+    parentheticals become pauses attributed to their element."""
     beat_ms = int(beat_seconds * 1000)
     fillers = _load_fillers()
     names = {e.character for e in elements if e.character}
@@ -177,17 +192,21 @@ def build_audio(
     # (element_index, kind, payload): kind is 'speech' (payload=(engine, voice, text, gap_ms))
     # or 'pause'
     plan: list[tuple[int, str, tuple | None]] = []
+
+    def plan_direction(i: int, direction: Element) -> None:
+        ev = voice_for(direction)
+        if ev is not None:
+            engine, voice = ev
+            spoken = speech.parenthetical(direction.text)
+            if spoken:
+                plan.append((i, "speech", (engine, voice, spoken, GAP_MS)))
+
     for i, el in enumerate(elements):
         if el.kind == "parenthetical":
             if el.is_beat:
                 plan.append((i, "pause", None))
             elif read_parentheticals:
-                ev = voice_for(el)
-                if ev is not None:
-                    engine, voice = ev
-                    spoken = speech.parenthetical(el.text)
-                    if spoken:
-                        plan.append((i, "speech", (engine, voice, spoken, GAP_MS)))
+                plan_direction(i, el)
             continue  # delivery direction — spoken only when read_parentheticals is on
         if el.kind == "character" and not speak_character_names:
             continue  # the voice change itself announces the speaker
@@ -196,9 +215,11 @@ def build_audio(
             continue
         engine, voice = ev
         if el.kind == "dialogue":
-            for chunk in _dialogue_chunks(el.text, read_parentheticals):
-                if chunk is None:
+            for kind, chunk in _dialogue_chunks(el.text, read_parentheticals):
+                if kind == "pause":
                     plan.append((i, "pause", None))
+                elif kind == "direction":
+                    plan_direction(i, Element("parenthetical", chunk, character=el.character))
                 else:
                     plan.append((i, "speech", (engine, voice, speech.dialogue(chunk), GAP_MS)))
         else:
@@ -211,9 +232,9 @@ def build_audio(
 
     def append(seg: AudioSegment, element_index: int | None) -> None:
         seg = _normalize(seg)
-        start = len(raw) * 1000 // (FRAME_RATE * 2)
+        start = _bytes_to_ms(len(raw))
         raw.extend(seg.raw_data)
-        end = len(raw) * 1000 // (FRAME_RATE * 2)
+        end = _bytes_to_ms(len(raw))
         if element_index is not None:
             if cues and cues[-1].element_index == element_index:
                 cues[-1].end_ms = end
@@ -234,7 +255,7 @@ def build_audio(
             seg, issue = _synthesize_checked(engine, voice, text, checker, idx)
             if issue:
                 issues.append(issue)
-            append(_declick(seg), idx)
+            append(_declick(level(_normalize(seg))), idx)
             append(_silence(gap), None)
         unit_completed(done + 1, total)
     progress(total, total, "Stitching complete")

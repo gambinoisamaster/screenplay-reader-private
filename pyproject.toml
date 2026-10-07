@@ -12,6 +12,7 @@ dependencies = [
     # below only applies to DIRECT dependencies, so without this line the CPU index
     # is ignored and Linux resolves the multi-GB CUDA build.
     "torch>=2.5; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "numpy>=1.26",  # loudness.py; pocket-tts brings it too, but not on Intel Macs
 ]
 
 # Optional Whisper check of every generated line (see screenplay_reader/validate.py).

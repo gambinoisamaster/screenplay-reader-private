@@ -29,8 +29,9 @@ Open source, for **non-commercial use** (see Credits & licenses below).
 - **Character names, your call** — by default the narrator says Characters' name
   before each line of dialogue. In settings, you may toggle on **Skip characters' names during playback** and only the dialogue is spoken; the voice change
   marks the speaker. Character names that appear in action lines are always read either way.
-- **Screenplay-aware** — `(CONT'D)`, `(V.O.)`, `(O.S.)` and delivery
-  directions like `(sarcastically)` are never vocalized. `(beat)` and
+- **Screenplay-aware** — `(CONT'D)`, `(V.O.)` and `(O.S.)` are never
+  vocalized. Delivery directions like `(sarcastically)` are read by the
+  Narrator; turn off **Read parentheticals** in settings to skip them. `(beat)` and
   `(pause)` become an adjustable 1–5 s pause, optionally colored with subtle
   filler noises from `assets/fillers/`.
 - **Voice casting & cloning** — assign any voice to each character and the
@@ -96,6 +97,11 @@ no music. The file name (minus `.wav`) becomes the voice's label.
 For better OmniVoice cloning, optionally place the exact transcript beside it
 as `VoiceName.wav.txt`. For example, `assets/voices/Susan.wav.txt` should
 contain the words spoken in `Susan.wav`. Pocket-TTS ignores this sidecar file.
+
+The recording's volume doesn't matter: Script Radio levels every generated
+line to the same loudness (-19 LUFS, peaks held under -1 dB, turning a line
+up by as much as 40 dB), so there's no need to normalize a sample in an
+audio editor first.
 
 ## PyTorch CPU gotchas
 

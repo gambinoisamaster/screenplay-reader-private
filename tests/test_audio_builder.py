@@ -36,10 +36,18 @@ def script():
     ]
 
 
-def run(speak_names: bool):
+def run(speak_names: bool, read_parentheticals: bool = True):
     engine = RecordingEngine()
-    voice_for = lambda el: (engine, "narrator" if el.kind in ("scene", "action", "character") else el.character)
-    result = build_audio(script(), voice_for, beat_seconds=1.0, speak_character_names=speak_names)
+    # Like the app: directions and names are read by the narrator.
+    narrated = ("scene", "action", "character", "parenthetical")
+    voice_for = lambda el: (engine, "narrator" if el.kind in narrated else el.character)
+    result = build_audio(
+        script(),
+        voice_for,
+        beat_seconds=1.0,
+        speak_character_names=speak_names,
+        read_parentheticals=read_parentheticals,
+    )
     return engine, result
 
 
@@ -93,9 +101,30 @@ def test_skip_names_setting_silences_cues_but_not_action_lines():
     assert any(t.startswith("Kyle inspects") for _, t in engine.calls)
 
 
-def test_delivery_parenthetical_never_spoken_and_beat_pauses():
+def test_delivery_parenthetical_read_aloud_by_default():
     engine, result = run(speak_names=False)
+    assert ("narrator", "to stylists.") in engine.calls
+    # It's highlighted as its own element, between the name and the line.
+    indexes = [c.element_index for c in result.cues]
+    assert indexes.index(3) < indexes.index(4)
+
+
+def test_inline_delivery_direction_read_by_narrator_not_the_speaker():
+    def calls(read_parentheticals):
+        engine = RecordingEngine()
+        line = Element("dialogue", "Sure. (sarcastically) Great idea.", character="KYLE")
+        voice_for = lambda el: (engine, "narrator" if el.kind == "parenthetical" else el.character)
+        build_audio([line], voice_for, read_parentheticals=read_parentheticals)
+        return engine.calls
+
+    assert calls(True) == [("KYLE", "Sure."), ("narrator", "sarcastically."), ("KYLE", "Great idea.")]
+    assert calls(False) == [("KYLE", "Sure."), ("KYLE", "Great idea.")]
+
+
+def test_delivery_parenthetical_silent_when_reading_off_and_beat_pauses():
+    engine, result = run(speak_names=False, read_parentheticals=False)
     assert not any("stylists" in t for _, t in engine.calls)
+    assert 3 not in {c.element_index for c in result.cues}
     # "(beat)" split KYLE's line into two utterances with a pause between.
     assert ("KYLE", "For real?") in engine.calls
     assert ("KYLE", "Not too out there?") in engine.calls
@@ -176,3 +205,31 @@ def test_validation_reports_segments_that_never_pass():
 
     texts = [t for _, t in engine.calls]
     assert all(texts.count(t) == MAX_ATTEMPTS for t in set(texts))
+
+
+class VolumeEngine(RecordingEngine):
+    """Each voice comes out at its own volume, like samples recorded at different levels."""
+
+    GAIN_DB = {"whisperer": -30, "shouter": 0}
+
+    def synthesize(self, voice, text):
+        self.calls.append((voice, text))
+        return Sine(300).to_audio_segment(duration=600).apply_gain(-3 + self.GAIN_DB[voice])
+
+
+def test_every_voice_comes_out_equally_loud():
+    import numpy as np
+
+    from screenplay_reader.loudness import TARGET_LUFS, loudness
+
+    engine = VolumeEngine()
+    elements = [
+        Element("dialogue", "I can barely be heard.", character="A"),
+        Element("dialogue", "I am very loud.", character="B"),
+    ]
+    voices = {"A": "whisperer", "B": "shouter"}
+    result = build_audio(elements, lambda el: (engine, voices[el.character]))
+    for cue in result.cues:
+        line = result.audio[cue.start_ms : cue.end_ms]
+        level = loudness(np.frombuffer(line.raw_data, np.int16) / 32768, line.frame_rate)
+        assert abs(level - TARGET_LUFS) < 0.5

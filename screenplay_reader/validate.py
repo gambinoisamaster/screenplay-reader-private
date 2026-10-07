@@ -115,7 +115,7 @@ class Transcriber:
 
     @staticmethod
     def _to_float32(seg: AudioSegment):
-        import numpy as np  # arrives with torch/pocket-tts; absent on Intel Macs
+        import numpy as np
 
         seg = seg.set_frame_rate(WHISPER_SAMPLE_RATE).set_channels(1).set_sample_width(2)
         pcm = np.frombuffer(seg.raw_data, dtype=np.int16).astype(np.float32) / 32768.0
