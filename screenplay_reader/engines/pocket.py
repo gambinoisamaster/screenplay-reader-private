@@ -18,6 +18,7 @@ engine reports itself unavailable and the app runs without any voices.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from pydub import AudioSegment
@@ -53,6 +54,9 @@ class PocketTTSEngine(TTSEngine):
     def __init__(self) -> None:
         self._model = None
         self._voice_states: dict[str, object] = {}
+        # Generation and casting-panel previews can ask for speech at the same
+        # time from different threads; the model takes one request at a time.
+        self._lock = threading.Lock()
         try:
             import pocket_tts  # noqa: F401
             self._import_error = None
@@ -93,8 +97,9 @@ class PocketTTSEngine(TTSEngine):
     def synthesize(self, voice: str, text: str) -> AudioSegment:
         import numpy as np
 
-        model = self._ensure_model()
-        audio = model.generate_audio(self._state_for(voice), text)
+        with self._lock:
+            model = self._ensure_model()
+            audio = model.generate_audio(self._state_for(voice), text)
         pcm = (audio.numpy().clip(-1, 1) * 32767).astype(np.int16)
         return AudioSegment(
             pcm.tobytes(), frame_rate=model.sample_rate, sample_width=2, channels=1

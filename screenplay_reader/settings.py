@@ -17,6 +17,9 @@ CACHE_DIR = Path(__file__).resolve().parent.parent / "cache"
 SETTINGS_PATH = CACHE_DIR / "settings.json"
 SESSION_PATH = CACHE_DIR / "session.json"
 LAST_AUDIO_PATH = CACHE_DIR / "last_run.wav"
+# Raw 16-bit mono 44.1 kHz PCM of the track while it's being generated, so the live
+# stream can be rewound and jumped around in before the finished WAV exists.
+STREAM_AUDIO_PATH = CACHE_DIR / "stream.pcm"
 VOICE_MEMORY_PATH = CACHE_DIR / "voice_memory.json"
 
 
@@ -32,7 +35,10 @@ class Settings:
     read_parentheticals: bool = True
     beat_seconds: float = 2.0
     highlight: bool = True
-    theme: str = "light"
+    # Reading theme: "original", "quiet", "calm" or "dark" (see ui/theme.py).
+    theme: str = "original"
+    # Script text size in points (Themes & Settings: A / A).
+    script_font_size: int = 24
     # Playback speed for the finished audio (1.0 = normal).
     playback_rate: float = 1.0
 
@@ -49,6 +55,11 @@ class Session:
     pdf_path: str = ""
     casting: dict[str, str] = field(default_factory=dict)  # "" = Narrator -> voice label
     cues: list[list[int]] = field(default_factory=list)  # [start_ms, end_ms, element_index]
+    # [start_ms, end_ms, element_index, start_char, end_char] per sentence (the highlight)
+    sentence_cues: list[list[int]] = field(default_factory=list)
+    # Fingerprint of the parsed script the audio was made from (ui.main_window.script_digest);
+    # the audio is only reused while the script still parses the same way.
+    script_digest: str = ""
     position_ms: int = 0
     # Settings that shaped the cached audio; if they differ from the current
     # ones the cache is stale and the user must regenerate.

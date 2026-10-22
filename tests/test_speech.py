@@ -47,3 +47,29 @@ def test_curly_apostrophes_become_ascii():
     assert speech.dialogue("\u2018quoted\u2019 and \u201cdouble\u201d\u2026") == "'quoted' and \"double\"..."
     assert speech.character_cue("O\u2019BRIEN") == "O'Brien."
     assert speech.scene_heading("INT. O\u2019BRIEN\u2019S PUB - NIGHT") == "Interior. O'Brien's Pub. Night."
+
+
+def test_scene_numbers_with_letters_and_revision_marks_are_never_spoken():
+    assert speech.scene_heading("A3 EXT. CARROLL HOME - BACKYARD - MOMENTS LATER - MORNING A3") == (
+        "Exterior. Carroll Home, Backyard, Moments Later. Morning."
+    )
+    assert speech.scene_heading("B3 INT/EXT. CARROLL HOME - KITCHEN - MORNING B3") == (
+        "Interior, Exterior. Carroll Home, Kitchen. Morning."
+    )
+    assert speech.scene_heading("13 INT. STATION - MEETING ROOM - MORNING 13 *") == (
+        "Interior. Station, Meeting Room. Morning."
+    )
+    # A trailing number that isn't the scene number stays ("12 ... ROOM 4" keeps nothing odd).
+    assert speech.strip_scene_number("12 INT. MOTEL ROOM 4 - NIGHT 12") == "INT. MOTEL ROOM 4 - NIGHT"
+
+
+def test_slashed_locations_read_as_a_list():
+    assert speech.scene_heading("2 INT/EXT. CARROLL HOME - ENTRY/KITCHEN/BATHROOM - MORNING 2") == (
+        "Interior, Exterior. Carroll Home, Entry, Kitchen, Bathroom. Morning."
+    )
+
+
+def test_title_case_names():
+    assert speech.title_case("MAN'S VOICE") == "Man's Voice"
+    assert speech.title_case("CORPORAL MASTERSON") == "Corporal Masterson"
+    assert speech.title_case("O'BRIEN") == "O'Brien"

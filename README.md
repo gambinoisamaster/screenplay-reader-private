@@ -16,10 +16,16 @@ Open source, for **non-commercial use** (see Credits & licenses below).
 
 - **PDF parsing** — detects scene headings, action, character cues, dialogue,
   and parentheticals by their indentation, the way screenplay formatting
-  encodes them. Speaking characters are extracted automatically.
+  encodes them. Speaking characters are extracted automatically, and a name
+  is one character however its cue is dressed: `JAN (ON THE PHONE) (CONT'D) *`
+  is just Jan. Page markers (`2 CONTINUED: (2) 2`), cut scenes
+  (`4-10 OMITTED 4-10`) and revision asterisks are skipped. Dual dialogue (two
+  characters talking at once, side by side) is read as an exchange: the left
+  speaker first, then the right.
 - **Read the way a script is read aloud** — `INT.`/`EXT.` are always spoken
   as "Interior"/"Exterior" (`INT. HOTEL BEL-AIR - SITTING ROOM - DAY` →
-  *"Interior. Hotel Bel-Air, Sitting Room. Day."*). A dialogue block wrapped
+  *"Interior. Hotel Bel-Air, Sitting Room. Day."*). Scene numbers — `12`,
+  `12A`, `A12` — are never spoken. A dialogue block wrapped
   over several lines in the PDF is one utterance — there is never a pause at
   a line break. Character names introduced in caps in action lines are read
   as names.
@@ -35,11 +41,19 @@ Open source, for **non-commercial use** (see Credits & licenses below).
   `(pause)` become an adjustable 1–5 s pause, optionally colored with subtle
   filler noises from `assets/fillers/`.
 - **Voice casting & cloning** — assign any voice to each character and the
-  Narrator. Drop a `.wav` into `assets/voices/` and it appears as a cloneable
-  voice; `Default_Narrator_Male.wav` is picked for the Narrator automatically.
+  Narrator, and press ▶ to hear any voice (in the picker or in its list) read
+  *"Forget it, Jake. It's Chinatown."* before you cast it. Drop a `.wav` into
+  `assets/voices/` and it appears as a cloneable voice;
+  `Default_Narrator_Male.wav` is picked for the Narrator automatically.
 - **Live highlighting, click to seek** — the script scrolls and highlights
-  the line being spoken. Click any line (a scene heading, say) and playback
-  jumps there.
+  the sentence being spoken. Click any line (a scene heading, say) and
+  playback jumps there.
+- **Scenes** — every scene is listed, numbered (scripts without scene numbers
+  are numbered by the app), with its start time; pick one to jump straight to it.
+- **Themes** — the **Aa** button sets the script's text size and its theme:
+  Original, Quiet, Calm or Dark. Each theme's highlighter, frame (toolbar,
+  player and status bar) and title color come from the color wheel, picked to
+  stand out from that theme's page.
 - **Picks up where you left off** — closing the app remembers the script,
   the casting and the playback position; relaunch and press Play.
 - **Optional Whisper check** — every generated line can be transcribed
@@ -77,16 +91,24 @@ uv run main.py
 ```
 
 1. **Open PDF** and pick a screenplay.
-2. Assign voices in the **Casting** panel. Settings underneath: beat-pause
-   length, highlighting, **One voice reads the whole script**, **Skip
-   characters' names**, and the Whisper check.
-3. **Generate Audio**. A green arrow appears next to **Play** when it's ready.
-4. **Play** — the current line highlights and auto-scrolls. Click any line to
-   jump there.
-5. **Export MP3** when you're happy.
+2. Assign voices in the **Casting** panel (▶ previews a voice). Then
+   **Customize Audio**: beat-pause length, highlighting, **Read
+   parentheticals**, **Skip characters' names**, and the Whisper check.
+3. **Generate Audio**. Progress shows at the bottom right, with **Cancel
+   Generation** just above it (it asks before stopping). Play turns on as soon
+   as the first audio is ready, and you can rewind, skip ahead or click a line
+   anywhere in the part that's been made while the rest is still generating.
+   (Speed changes start once the audio has finished.)
+4. **Play** — the current sentence highlights and auto-scrolls. Click any line
+   (or pick a scene from **Scenes**) to jump there.
+5. **Export MP3** — it takes the progress bar's place, bottom right, once the
+   audio is done. (Credits are under Help, and in the app menu's About.)
 
 Everything the app remembers lives in `cache/` (`settings.json`,
-`session.json`, `last_run.wav`); delete the folder to start fresh.
+`session.json`, `last_run.wav`, and the voice previews in `voice_previews/`);
+delete the folder to start fresh. To make every voice preview up front, run
+`uv run python scripts/make_voice_previews.py` (the app otherwise makes any
+missing one in the background when the Casting panel opens).
 
 ### Cloning a voice
 

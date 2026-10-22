@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,7 @@ class OmniVoiceTTSEngine(TTSEngine):
 
     def __init__(self) -> None:
         self._model = None
+        self._lock = threading.Lock()  # one request at a time (generation vs. previews)
 
     def available(self) -> tuple[bool, str]:
         try:
@@ -59,19 +61,18 @@ class OmniVoiceTTSEngine(TTSEngine):
         return self._model
 
     def synthesize(self, voice: str, text: str) -> AudioSegment:
-        model = self._ensure_model()
-
-        generator = model.generate(
-            text=text,
-            language="en",
-            ref_audio=self._voice_sample(voice),
-            ref_text=self._voice_reference_text(voice),
-        )
-
-        try:
-            result = next(iter(generator))
-        except StopIteration as e:
-            raise RuntimeError("mlx-audio produced no audio output") from e
+        with self._lock:
+            model = self._ensure_model()
+            generator = model.generate(
+                text=text,
+                language="en",
+                ref_audio=self._voice_sample(voice),
+                ref_text=self._voice_reference_text(voice),
+            )
+            try:
+                result = next(iter(generator))
+            except StopIteration as e:
+                raise RuntimeError("mlx-audio produced no audio output") from e
 
         audio = getattr(result, "audio", None)
         if audio is None:

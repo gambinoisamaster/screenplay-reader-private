@@ -33,7 +33,10 @@ _ASCII_PUNCT = str.maketrans({
     "\u2026": "...",                                              # ellipsis
     "\u00a0": " ",                                                # non-breaking space
 })
-_SCENE_NUM_RE = re.compile(r"^\s*\d+[A-Z]?\s+|\s+\d+[A-Z]?\s*$")
+_SCENE_NO = r"[A-Z]{0,2}\d+[A-Z]{0,2}"  # "12", "12A", "A12"
+_LEADING_NUM_RE = re.compile(rf"^\s*({_SCENE_NO})\.?\s+", re.I)
+_TRAILING_NUM_RE = re.compile(rf"\s+({_SCENE_NO})\.?\s*$", re.I)
+_REVISION_MARKS_RE = re.compile(r"^\s*\*+\s*|\s*\*+\s*$")
 _PREFIX_RE = re.compile(
     r"^(?P<prefix>INT\s*\.?\s*/\s*EXT|EXT\s*\.?\s*/\s*INT|I\s*/\s*E|INT|EXT)\s*[.\s:-]*\s*",
     re.I,
@@ -63,6 +66,12 @@ def _title_word(word: str) -> str:
     return re.sub(r"(['\u2019])([A-Za-z]{1,2})\b", lambda m: m.group(1) + m.group(2).lower(), word)
 
 
+def title_case(name: str) -> str:
+    """How a character's name is shown: "MAN'S VOICE" -> "Man's Voice" (str.title()
+    would give "Man'S Voice")."""
+    return " ".join(_title_word(word) for word in name.split())
+
+
 _VOWEL_RE = re.compile(r"[AEIOUY]")
 
 
@@ -86,15 +95,32 @@ def _speak_caps(text: str, min_len: int, names: set[str] = frozenset(), keep_ini
     return " ".join(out)
 
 
+def strip_scene_number(heading: str) -> str:
+    """'A3 EXT. CARROLL HOME - MORNING A3 *' -> 'EXT. CARROLL HOME - MORNING'.
+
+    Scene numbers ("12", "12A", "A12") are layout, never spoken; a trailing one
+    goes too when it repeats the leading one (or when it's the only one)."""
+    text = _REVISION_MARKS_RE.sub("", heading.strip())
+    lead = _LEADING_NUM_RE.match(text)
+    if lead:
+        text = text[lead.end():]
+    trail = _TRAILING_NUM_RE.search(text)
+    if trail and (trail.group(1).upper() == lead.group(1).upper() if lead else trail.group(1)[0].isdigit()):
+        text = text[: trail.start()]
+    return text.strip()
+
+
 def scene_heading(text: str) -> str:
     """'INT. HOTEL BEL-AIR - GRACE KELLY SUITE - DAY' -> 'Interior. Hotel Bel-Air, Grace Kelly Suite. Day.'"""
-    text = collapse_whitespace(_SCENE_NUM_RE.sub("", text))
+    text = collapse_whitespace(strip_scene_number(text)).rstrip(" -–—")
     prefix_spoken = ""
     m = _PREFIX_RE.match(text)
     if m:
         key = re.sub(r"[\s.]", "", m.group("prefix")).upper()
         prefix_spoken = _PREFIX_WORDS.get(key, "")
         text = text[m.end():]
+    # "ENTRY/KITCHEN/BATHROOM" is a list of rooms, not "entry slash kitchen".
+    text = re.sub(r"(?<=[A-Za-z])\s*/\s*(?=[A-Za-z])", ", ", text)
     parts = [p.strip(" .") for p in _SEP_RE.split(text) if p.strip(" .")]
     parts = [_speak_caps(p, min_len=2) for p in parts]
     if len(parts) >= 2:

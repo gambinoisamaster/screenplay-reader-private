@@ -233,3 +233,40 @@ def test_every_voice_comes_out_equally_loud():
         line = result.audio[cue.start_ms : cue.end_ms]
         level = loudness(np.frombuffer(line.raw_data, np.int16) / 32768, line.frame_rate)
         assert abs(level - TARGET_LUFS) < 0.5
+
+
+def test_sentence_cues_cover_each_sentence_in_order():
+    elements = script()
+    result = build_audio(elements, lambda el: (RecordingEngine(), "v"), beat_seconds=1.0, speak_character_names=False)
+    sentences = result.sentences
+    assert sentences, "no sentence timeline"
+    for a, b in zip(sentences, sentences[1:]):
+        assert a.start_ms < a.end_ms <= b.start_ms
+    assert sentences[-1].end_ms <= len(result.audio)
+    spoken = {(c.element_index, elements[c.element_index].text[c.start_char:c.end_char]) for c in sentences}
+    # The two-sentence action paragraph is highlighted a sentence at a time...
+    assert (1, "KYLE inspects the attire.") in spoken
+    assert (1, "He looks unsure.") in spoken
+    # ...dialogue too, and the "(beat)" itself is highlighted during its pause.
+    assert (6, "For real?") in spoken
+    assert (6, "(beat)") in spoken
+    assert (6, "Not too out there?") in spoken
+    # A sentence's cue sits inside its element's cue.
+    for cue in sentences:
+        parent = next(c for c in result.cues if c.element_index == cue.element_index and c.start_ms <= cue.start_ms)
+        assert cue.end_ms <= parent.end_ms
+
+
+def test_sentence_cues_stream_before_their_audio():
+    events = []
+    build_audio(
+        script(),
+        lambda el: (RecordingEngine(), "v"),
+        speak_character_names=False,
+        audio_chunk=lambda data, start, end, index: events.append(("audio", start, end)),
+        sentence_cue=lambda cue: events.append(("sentence", cue.start_ms, cue.end_ms)),
+    )
+    for i, (kind, start, end) in enumerate(events):
+        if kind == "sentence":
+            # The chunk carrying this sentence's audio comes later in the stream.
+            assert any(k == "audio" and s <= start < e for k, s, e in events[i + 1:])

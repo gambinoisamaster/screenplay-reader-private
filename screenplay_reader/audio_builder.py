@@ -1,7 +1,9 @@
 """Turn parsed screenplay elements into one stitched audio track.
 
-Produces the full mix plus a timeline mapping audio time -> element index,
-which drives live highlighting during playback and click-to-seek.
+Produces the full mix plus two timelines: audio time -> element index (drives
+click-to-seek and following the script), and audio time -> sentence (drives
+the sentence-by-sentence highlight; see sentences.py for how a sentence's time
+inside one utterance is found).
 
 Script Elements which are audio-generated (elements as defined by Final Draft) (see speech.py for the exact wording):
 - Scene Headings, with INT./EXT. expanded to Interior/Exterior
@@ -38,15 +40,17 @@ from __future__ import annotations
 
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 from pydub import AudioSegment
 
 from . import speech
 from .loudness import level
 from .parser import BEAT_RE, Element
+from .sentences import sentence_boundaries, sentence_weight, split_sentences
 from .validate import Issue, Transcriber, MAX_ATTEMPTS
 
 FRAME_RATE = 44100
@@ -73,14 +77,47 @@ class Cue:
 
 
 @dataclass
+class SentenceCue:
+    """When one sentence is heard: characters [start_char, end_char) of
+    elements[element_index].text play from start_ms to end_ms."""
+
+    start_ms: int
+    end_ms: int
+    element_index: int
+    start_char: int
+    end_char: int
+
+
+@dataclass
 class BuildResult:
     audio: AudioSegment
     cues: list[Cue]
     issues: list[Issue]  # empty unless validation ran and something never passed
+    sentences: list[SentenceCue] = field(default_factory=list)
+
+
+@dataclass
+class _Step:
+    """One thing to put on the track: a spoken utterance or a beat pause,
+    voicing characters span[0]:span[1] of elements[element_index].text."""
+
+    element_index: int
+    kind: str  # 'speech' | 'pause'
+    span: tuple[int, int]
+    engine: object = None
+    voice: str = ""
+    text: str = ""
+    gap_ms: int = 0
 
 
 def _normalize(seg: AudioSegment) -> AudioSegment:
     return seg.set_frame_rate(FRAME_RATE).set_channels(1).set_sample_width(2)
+
+
+def finish_segment(seg: AudioSegment) -> AudioSegment:
+    """What every spoken segment goes through before it's heard: 44.1 kHz mono,
+    leveled to the target loudness, edges declicked."""
+    return _declick(level(_normalize(seg)))
 
 
 def _bytes_to_ms(n: int) -> int:
@@ -124,24 +161,33 @@ def _beat_segment(ms: int, fillers: list[AudioSegment]) -> AudioSegment:
     return base
 
 
-def _dialogue_chunks(text: str, read_parentheticals: bool = True) -> list[tuple[str, str | None]]:
-    """Split dialogue on inline parentheticals into ('line', text), ('pause', None)
-    for a beat, and ('direction', '(sarcastically)') for a delivery direction —
-    kept only when read_parentheticals is on, otherwise dropped."""
-    chunks: list[tuple[str, str | None]] = []
+def _trimmed(text: str, start: int, end: int) -> tuple[int, int]:
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
+
+
+def _dialogue_chunks(text: str, read_parentheticals: bool = True) -> list[tuple[str, int, int]]:
+    """Split dialogue on inline parentheticals into ('line', start, end), ('pause',
+    start, end) for a beat, and ('direction', start, end) for a delivery direction
+    like '(sarcastically)' — kept only when read_parentheticals is on, otherwise
+    dropped. start/end are character offsets into text."""
+    chunks: list[tuple[str, int, int]] = []
     pos = 0
     for m in INLINE_PAREN_RE.finditer(text):
-        before = text[pos : m.start()].strip()
-        if before:
-            chunks.append(("line", before))
+        before = _trimmed(text, pos, m.start())
+        if before[0] < before[1]:
+            chunks.append(("line", *before))
         if BEAT_RE.match(m.group(0)):
-            chunks.append(("pause", None))
+            chunks.append(("pause", m.start(), m.end()))
         elif read_parentheticals:
-            chunks.append(("direction", m.group(0)))
+            chunks.append(("direction", m.start(), m.end()))
         pos = m.end()
-    tail = text[pos:].strip()
-    if tail:
-        chunks.append(("line", tail))
+    tail = _trimmed(text, pos, len(text))
+    if tail[0] < tail[1]:
+        chunks.append(("line", *tail))
     return chunks
 
 
@@ -174,6 +220,7 @@ def build_audio(
     checker: Transcriber | None = None,
     progress: Callable[[int, int, str], None] = lambda done, total, msg: None,
     audio_chunk: Callable[[bytes, int, int, int | None], None] | None = None,
+    sentence_cue: Callable[[SentenceCue], None] | None = None,
     unit_completed: Callable[[int, int], None] = lambda done, total: None,
     cancelled: Callable[[], bool] = lambda: False,
 ) -> BuildResult:
@@ -184,29 +231,32 @@ def build_audio(
     it too as parenthetical elements — inline ones like "Sure. (sarcastically)
     Great." included — so they're read in the same voice (the narrator, in the
     app) rather than the speaker's; when it's off they're skipped. Beat
-    parentheticals become pauses attributed to their element."""
+    parentheticals become pauses attributed to their element.
+
+    While building, audio_chunk(data, start_ms, end_ms, element_index) streams
+    each piece of the track as it's made, and sentence_cue(cue) each sentence's
+    timing — always before the audio it describes."""
     beat_ms = int(beat_seconds * 1000)
     fillers = _load_fillers()
     names = {e.character for e in elements if e.character}
 
-    # (element_index, kind, payload): kind is 'speech' (payload=(engine, voice, text, gap_ms))
-    # or 'pause'
-    plan: list[tuple[int, str, tuple | None]] = []
+    plan: list[_Step] = []
 
-    def plan_direction(i: int, direction: Element) -> None:
+    def plan_direction(i: int, direction: Element, span: tuple[int, int]) -> None:
         ev = voice_for(direction)
         if ev is not None:
             engine, voice = ev
             spoken = speech.parenthetical(direction.text)
             if spoken:
-                plan.append((i, "speech", (engine, voice, spoken, GAP_MS)))
+                plan.append(_Step(i, "speech", span, engine, voice, spoken, GAP_MS))
 
     for i, el in enumerate(elements):
+        whole = (0, len(el.text))
         if el.kind == "parenthetical":
             if el.is_beat:
-                plan.append((i, "pause", None))
+                plan.append(_Step(i, "pause", whole))
             elif read_parentheticals:
-                plan_direction(i, el)
+                plan_direction(i, el, whole)
             continue  # delivery direction — spoken only when read_parentheticals is on
         if el.kind == "character" and not speak_character_names:
             continue  # the voice change itself announces the speaker
@@ -215,53 +265,78 @@ def build_audio(
             continue
         engine, voice = ev
         if el.kind == "dialogue":
-            for kind, chunk in _dialogue_chunks(el.text, read_parentheticals):
+            for kind, start, end in _dialogue_chunks(el.text, read_parentheticals):
+                chunk = el.text[start:end]
                 if kind == "pause":
-                    plan.append((i, "pause", None))
+                    plan.append(_Step(i, "pause", (start, end)))
                 elif kind == "direction":
-                    plan_direction(i, Element("parenthetical", chunk, character=el.character))
+                    plan_direction(i, Element("parenthetical", chunk, character=el.character), (start, end))
                 else:
-                    plan.append((i, "speech", (engine, voice, speech.dialogue(chunk), GAP_MS)))
+                    plan.append(_Step(i, "speech", (start, end), engine, voice, speech.dialogue(chunk), GAP_MS))
         else:
             gap = CUE_GAP_MS if el.kind == "character" else GAP_MS
-            plan.append((i, "speech", (engine, voice, speech.for_element(el, names), gap)))
+            plan.append(_Step(i, "speech", whole, engine, voice, speech.for_element(el, names), gap))
 
     raw = bytearray()
     cues: list[Cue] = []
+    sentences: list[SentenceCue] = []
     issues: list[Issue] = []
 
-    def append(seg: AudioSegment, element_index: int | None) -> None:
+    def append(seg: AudioSegment, step: _Step | None) -> None:
         seg = _normalize(seg)
         start = _bytes_to_ms(len(raw))
-        raw.extend(seg.raw_data)
-        end = _bytes_to_ms(len(raw))
-        if element_index is not None:
+        end = _bytes_to_ms(len(raw) + len(seg.raw_data))
+        element_index = None if step is None else step.element_index
+        if step is not None:
             if cues and cues[-1].element_index == element_index:
                 cues[-1].end_ms = end
             else:
                 cues.append(Cue(start, end, element_index))
+            for cue in _sentence_cues(elements[element_index], step, seg, start, end):
+                sentences.append(cue)
+                if sentence_cue is not None:
+                    sentence_cue(cue)
+        raw.extend(seg.raw_data)
         if audio_chunk is not None:
             audio_chunk(seg.raw_data, start, end, element_index)
 
     total = len(plan)
-    for done, (idx, kind, payload) in enumerate(plan):
+    for done, step in enumerate(plan):
         if cancelled():
             raise GenerationCancelled()
-        if kind == "pause":
-            append(_beat_segment(beat_ms, fillers), idx)
+        if step.kind == "pause":
+            append(_beat_segment(beat_ms, fillers), step)
         else:
-            engine, voice, text, gap = payload
-            progress(done, total, f"{engine.name} · {voice}: {text[:40]}…")
-            seg, issue = _synthesize_checked(engine, voice, text, checker, idx)
+            progress(done, total, f"{step.engine.name} · {step.voice}: {step.text[:40]}…")
+            seg, issue = _synthesize_checked(step.engine, step.voice, step.text, checker, step.element_index)
             if issue:
                 issues.append(issue)
-            append(_declick(level(_normalize(seg))), idx)
-            append(_silence(gap), None)
+            append(finish_segment(seg), step)
+            append(_silence(step.gap_ms), None)
         unit_completed(done + 1, total)
     progress(total, total, "Stitching complete")
 
     audio = AudioSegment(bytes(raw), frame_rate=FRAME_RATE, sample_width=2, channels=1)
-    return BuildResult(audio, cues, issues)
+    return BuildResult(audio, cues, issues, sentences)
+
+
+def _sentence_cues(el: Element, step: _Step, seg: AudioSegment, start_ms: int, end_ms: int) -> list[SentenceCue]:
+    """The sentences this step voices and when each is heard. Action and dialogue
+    are split into sentences; a heading, a name, a direction or a pause is one."""
+    if step.kind == "speech" and el.kind in ("action", "dialogue"):
+        spans = split_sentences(el.text, *step.span)
+    else:
+        spans = [step.span]
+    if len(spans) == 1:
+        return [SentenceCue(start_ms, end_ms, step.element_index, *spans[0])]
+    samples = np.frombuffer(seg.raw_data, dtype=np.int16) / 32768.0
+    weights = [sentence_weight(el.text[a:b]) for a, b in spans]
+    bounds = sentence_boundaries(samples, seg.frame_rate, weights)
+    times = [start_ms + round(t * 1000) for t in bounds[:-1]] + [end_ms]
+    return [
+        SentenceCue(times[k], times[k + 1], step.element_index, a, b)
+        for k, (a, b) in enumerate(spans)
+    ]
 
 
 def export_mp3(audio: AudioSegment, path: str) -> None:
