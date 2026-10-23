@@ -26,7 +26,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtCore import QPointF
 from PySide6.QtMultimedia import QAudioFormat, QAudioOutput, QAudioSink, QMediaDevices, QMediaPlayer, QSoundEffect
-from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -245,57 +244,56 @@ class ClickableScript(QTextEdit):
 
 
 class ScriptRadioLanding(QWidget):
-    ART_WIDTH = 1100
-    ART_HEIGHT = 780
+    """The start screen: the Script Radio record on black, with New Script and
+    Previous Script beneath it."""
+
+    BUTTON_BAND = 96  # room under the record for the buttons
 
     def __init__(self, artwork_path: Path, previous_enabled: bool, parent=None):
         super().__init__(parent)
-        self._artwork = QSvgRenderer(str(artwork_path), self)
+        self._artwork = QPixmap(str(artwork_path))
 
-        self.new_script_button = QPushButton(self)
-        self.new_script_button.setAccessibleName("New Script")
+        self.new_script_button = QPushButton("New Script", self)
         self.new_script_button.setToolTip("Open a screenplay PDF")
-
-        self.previous_script_button = QPushButton(self)
-        self.previous_script_button.setAccessibleName("Previous Script")
+        self.previous_script_button = QPushButton("Previous Script", self)
         self.previous_script_button.setToolTip("Resume the previous screenplay")
         self.previous_script_button.setEnabled(previous_enabled)
-
+        font = QFont()
+        font.setFamilies(SCRIPT_FAMILIES)  # the typewriter face of the record's label
+        font.setPointSize(17)
+        font.setBold(True)
+        for button in (self.new_script_button, self.previous_script_button):
+            button.setFont(font)
+            button.setFixedSize(220, 46)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid transparent; "
-            "border-radius: 0; padding: 0; }"
-            "QPushButton:hover { background: rgba(255, 255, 255, 45); border-color: #171717; }"
-            "QPushButton:focus { border: 2px dashed #171717; }"
-            "QPushButton:disabled { background: transparent; border-color: transparent; }"
+            "QPushButton { background: transparent; color: #FFFFFF; border: 2px solid #FFFFFF;"
+            " border-radius: 23px; padding: 0; }"
+            "QPushButton:hover { background: #FFFFFF; color: #000000; }"
+            "QPushButton:pressed { background: #D9D9D9; color: #000000; border-color: #D9D9D9; }"
+            "QPushButton:disabled { color: #5A5A5A; border-color: #3A3A3A; }"
         )
         self._position_buttons()
 
     def _art_rect(self) -> QRectF:
-        scale = min(self.width() / self.ART_WIDTH, self.height() / self.ART_HEIGHT)
-        width = self.ART_WIDTH * scale
-        height = self.ART_HEIGHT * scale
-        return QRectF((self.width() - width) / 2, (self.height() - height) / 2, width, height)
+        side = max(0, min(self.width(), self.height() - self.BUTTON_BAND) - 24)
+        return QRectF((self.width() - side) / 2, 12, side, side)
 
     def _position_buttons(self):
         art = self._art_rect()
-        scale = art.width() / self.ART_WIDTH
-        for button, x, y, width, height in (
-            (self.new_script_button, 77, 707, 190, 44),
-            (self.previous_script_button, 833, 707, 190, 44),
-        ):
-            button.setGeometry(
-                round(art.x() + x * scale),
-                round(art.y() + y * scale),
-                round(width * scale),
-                round(height * scale),
-            )
+        gap = 24
+        total = self.new_script_button.width() + gap + self.previous_script_button.width()
+        x = int((self.width() - total) / 2)
+        y = int(art.bottom() + (self.height() - art.bottom() - self.new_script_button.height()) / 2)
+        self.new_script_button.move(x, y)
+        self.previous_script_button.move(x + self.new_script_button.width() + gap, y)
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor("#a8a8a5"))
-        if self._artwork.isValid():
-            self._artwork.render(painter, self._art_rect())
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.fillRect(self.rect(), QColor("#000000"))  # the artwork's own black, edge to edge
+        if not self._artwork.isNull():
+            painter.drawPixmap(self._art_rect(), self._artwork, QRectF(self._artwork.rect()))
 
     def resizeEvent(self, event):
         self._position_buttons()
@@ -644,7 +642,7 @@ class MainWindow(QMainWindow):
         self._place_title()
 
     def _build_landing_page(self):
-        artwork = Path(__file__).resolve().parents[2] / "design-previews" / "01-bootleg-press.svg"
+        artwork = Path(__file__).resolve().parents[2] / "assets" / "art" / "landing.jpg"
         self.landing_page = ScriptRadioLanding(
             artwork,
             previous_enabled=Session.load() is not None,
